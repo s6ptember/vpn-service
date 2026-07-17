@@ -1,7 +1,7 @@
-import { eq, sql } from 'drizzle-orm';
+import { and, eq, isNull } from 'drizzle-orm';
 import { createDb } from '../src/lib/server/db/client';
 import { faqItems, plans, promoCodes, users } from '../src/lib/server/db/schema';
-import type { Currency } from '../src/lib/types';
+import { CURRENCIES, type Currency } from '../src/lib/types';
 
 /**
  * Shared fixtures for dev and tests. Fakes serve the same data, so a slice written against a fake
@@ -10,14 +10,34 @@ import type { Currency } from '../src/lib/types';
  * Prices mirror vpn-miniapp.html one-to-one as minor units pending the open question in tech.md 17
  * (currency and launch prices). 90 days is priced ~30% under three 7-day-rate months.
  */
+// Outside Vite nothing loads .env; docker passes the values through env_file instead.
+try {
+	process.loadEnvFile('.env');
+} catch {
+	// No .env: fall back to the real environment (docker, CI).
+}
+
 const path = process.env.DATABASE_PATH;
 if (!path) {
 	console.error('DATABASE_PATH is required');
 	process.exit(1);
 }
 
-const currency = (process.env.PRICE_CURRENCY ?? 'usd') as Currency;
-const adminChatId = Number(process.env.ADMIN_CHAT_ID ?? 100_000_001);
+// `as Currency` would launder anything the shell says into the frozen union, and SQLite holds no
+// CHECK on the column — a typo would seed a currency the app cannot price or charge in.
+const currencyRaw = process.env.PRICE_CURRENCY ?? 'usd';
+if (!CURRENCIES.includes(currencyRaw as Currency)) {
+	console.error(`PRICE_CURRENCY must be one of ${CURRENCIES.join(' | ')}, got "${currencyRaw}"`);
+	process.exit(1);
+}
+const currency = currencyRaw as Currency;
+
+const adminChatId = Number(process.env.ADMIN_CHAT_ID || 100_000_001);
+if (!Number.isSafeInteger(adminChatId) || adminChatId <= 0) {
+	console.error(`ADMIN_CHAT_ID must be a positive integer, got "${process.env.ADMIN_CHAT_ID}"`);
+	process.exit(1);
+}
+
 const now = new Date();
 const db = createDb(path);
 
@@ -88,31 +108,38 @@ const USERS = [
 	{ telegramId: 100_000_002, username: 'mariia', firstName: 'Мария', lastName: 'Петрова' }
 ];
 
+/**
+ * Reconcile by hand: plans.name carries no unique constraint, so onConflictDoNothing has no target
+ * to fire on and every run would insert another copy. Match the live row by name and update it,
+ * otherwise insert. Archived rows are excluded from the match on purpose — a plan the admin retired
+ * must stay retired, and a seed that revives it would undo A4's archiving in one command.
+ */
 for (const plan of PLANS) {
+	const live = db
+		.select({ id: plans.id })
+		.from(plans)
+		.where(and(eq(plans.name, plan.name), isNull(plans.archivedAt)))
+		.get();
+
+	if (live) {
+		db.update(plans)
+			.set({ ...plan, currency, trafficLimitBytes: 0, isActive: true, updatedAt: now })
+			.where(eq(plans.id, live.id))
+			.run();
+		continue;
+	}
+
 	db.insert(plans)
 		.values({
 			...plan,
-			priceMinor: plan.priceMinor,
 			currency,
 			trafficLimitBytes: 0,
 			isActive: true,
 			createdAt: now,
 			updatedAt: now
 		})
-		.onConflictDoNothing()
-		.run();
-
-	// onConflictDoNothing needs a unique target; plans.name has none, so reconcile by name.
-	db.update(plans)
-		.set({ ...plan, currency, trafficLimitBytes: 0, isActive: true, updatedAt: now })
-		.where(eq(plans.name, plan.name))
 		.run();
 }
-
-// Deduplicate plans if seed ran before this reconcile existed.
-db.run(
-	sql`delete from plans where id not in (select min(id) from plans group by name) and id not in (select plan_id from orders union select plan_id from subscriptions)`
-);
 
 for (const promo of PROMOS) {
 	db.insert(promoCodes)
