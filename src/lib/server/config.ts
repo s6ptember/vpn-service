@@ -42,10 +42,11 @@ const ConfigSchema = v.pipe(
 	v.object({
 		PUBLIC_APP_URL: url('PUBLIC_APP_URL'),
 		DATABASE_PATH: required('DATABASE_PATH'),
-		// 32 bytes hex. Short secret means a forgeable session cookie, so this is a hard floor.
+		// 32 bytes as hex is 64 characters, and minLength counts characters: 32 here would have
+		// accepted half the documented entropy. A short secret means a forgeable session cookie.
 		SESSION_SECRET: v.pipe(
 			required('SESSION_SECRET'),
-			v.minLength(32, 'SESSION_SECRET is too short')
+			v.minLength(64, 'SESSION_SECRET must be at least 32 bytes hex (openssl rand -hex 32)')
 		),
 		SESSION_TTL_DAYS: intFrom('SESSION_TTL_DAYS', 1, 365),
 

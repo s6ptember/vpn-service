@@ -15,6 +15,21 @@ const isAdminPath = (pathname: string) => pathname.startsWith('/profile/admin');
 // The kitchen sink documents primitives; it has no place in a production bundle.
 const isDevOnlyPath = (pathname: string) => pathname.startsWith('/dev');
 
+/**
+ * SvelteKit routes on a decoded pathname but hands `handle` the raw one, so `/%64ev/kitchen-sink`
+ * reaches the /dev route while `startsWith('/dev')` is false — every prefix check here would be one
+ * percent-escape away from being skipped. Decoded exactly the way the router does it, '%25' left
+ * alone so an encoded percent cannot decode twice.
+ */
+function decodePath(pathname: string): string {
+	try {
+		return pathname.split('%25').map(decodeURI).join('%25');
+	} catch {
+		// Malformed encoding never matches a route; keep it raw and let the router 404 it.
+		return pathname;
+	}
+}
+
 if (!building) {
 	startWorker();
 }
@@ -23,7 +38,7 @@ export const handle: Handle = async ({ event, resolve }) => {
 	event.locals.requestId = crypto.randomUUID();
 	event.locals.user = sessions.read(event.cookies);
 
-	const { pathname } = event.url;
+	const pathname = decodePath(event.url.pathname);
 
 	if (isDevOnlyPath(pathname) && !dev) error(404, 'not found');
 
