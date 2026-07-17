@@ -46,8 +46,11 @@ jobs:
           # "Cannot open database because the directory does not exist".
           mkdir -p data
 
+      # chromium-headless-shell is a separate download, and it is what playwright actually launches
+      # for headless runs: installing only `chromium` leaves the browser-driven tests failing with
+      # "Executable doesn't exist" while the request-based ones still pass.
       - name: Install browser
-        run: npx playwright install --with-deps chromium
+        run: npx playwright install --with-deps chromium chromium-headless-shell
 
       # prettier --check . && eslint .
       - name: Lint
