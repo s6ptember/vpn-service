@@ -1,3 +1,11 @@
+## Project Configuration
+
+- **Language**: TypeScript
+- **Package Manager**: npm
+- **Add-ons**: prettier, eslint, vitest, playwright, tailwindcss, sveltekit-adapter
+
+---
+
 # CLAUDE.md
 
 Правила, которые обязаны срабатывать на каждой строке кода. Claude Code подтягивает этот файл в каждую сессию автоматически, поэтому он живёт здесь, а не в `tech.md`.
