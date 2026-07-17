@@ -17,6 +17,14 @@
 	--color-accent-600: #624bd2;
 	--color-accent-700: #4630b5;
 
+	/* vpn-miniapp.html shows no failure or warning state; these extend the palette for the
+	   danger/warn tones the Button and Badge contracts in tech.md 12 require. */
+	--color-danger-100: #fde2e2;
+	--color-danger-600: #d23b3b;
+	--color-danger-700: #a82525;
+	--color-warn-100: #fdf0d5;
+	--color-warn-700: #8a5a00;
+
 	--radius-control: 12px;
 	--radius-field: 14px;
 	--radius-card: 18px;

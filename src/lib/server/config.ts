@@ -43,7 +43,10 @@ const ConfigSchema = v.pipe(
 		PUBLIC_APP_URL: url('PUBLIC_APP_URL'),
 		DATABASE_PATH: required('DATABASE_PATH'),
 		// 32 bytes hex. Short secret means a forgeable session cookie, so this is a hard floor.
-		SESSION_SECRET: v.pipe(required('SESSION_SECRET'), v.minLength(32, 'SESSION_SECRET is too short')),
+		SESSION_SECRET: v.pipe(
+			required('SESSION_SECRET'),
+			v.minLength(32, 'SESSION_SECRET is too short')
+		),
 		SESSION_TTL_DAYS: intFrom('SESSION_TTL_DAYS', 1, 365),
 
 		TELEGRAM_BOT_TOKEN: required('TELEGRAM_BOT_TOKEN'),
@@ -58,7 +61,12 @@ const ConfigSchema = v.pipe(
 		MARZBAN_ADMIN_PASSWORD: trimmed,
 		MARZBAN_INBOUND_TAGS: v.pipe(
 			required('MARZBAN_INBOUND_TAGS'),
-			v.transform((s) => s.split(',').map((tag) => tag.trim()).filter(Boolean)),
+			v.transform((s) =>
+				s
+					.split(',')
+					.map((tag) => tag.trim())
+					.filter(Boolean)
+			),
 			v.minLength(1, 'MARZBAN_INBOUND_TAGS must list at least one tag')
 		),
 		MARZBAN_VLESS_FLOW: required('MARZBAN_VLESS_FLOW'),
