@@ -23,8 +23,11 @@ export default defineConfig({
 				test: {
 					name: 'server',
 					environment: 'node',
-					include: ['src/**/*.{test,spec}.{js,ts}'],
-					exclude: ['src/**/*.svelte.{test,spec}.{js,ts}']
+					// No exclude for *.svelte.{test,spec}.*: the scaffolder pairs that pattern with a
+					// second, browser-environment project, and we run unit tests only (tech.md 14
+					// exempts primitive markup). Left in place it matched no project at all, so such a
+					// file would be collected by nothing and pass the gate without ever running.
+					include: ['src/**/*.{test,spec}.{js,ts}']
 				}
 			}
 		]

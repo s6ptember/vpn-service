@@ -129,10 +129,30 @@ test.describe('guard', () => {
 		expect((await request.post('/')).status()).toBe(401);
 		expect((await request.get('/api/anything')).status()).toBe(401);
 	});
+
+	test('is not fooled by a percent-encoded path', async ({ request }) => {
+		// SvelteKit routes on the decoded path but hands `handle` the raw one, so a guard matching
+		// the raw pathname is one escape away from being skipped: /%61pi decodes to /api at the
+		// router while startsWith('/api/') is false.
+		expect((await request.get('/%61pi/anything')).status()).toBe(401);
+		expect((await request.post('/%61pi/anything')).status()).toBe(401);
+	});
 });
 
 test.describe('dev-only routes', () => {
 	test('kitchen sink is not reachable in a production build', async ({ request }) => {
 		expect((await request.get('/dev/kitchen-sink')).status()).toBe(404);
+	});
+
+	test('stays unreachable when the path is percent-encoded', async ({ request }) => {
+		// Each of these reaches the /dev/kitchen-sink route after the router decodes it.
+		expect((await request.get('/%64ev/kitchen-sink')).status()).toBe(404);
+		expect((await request.get('/%64%65%76/kitchen-sink')).status()).toBe(404);
+	});
+
+	test('does not mistake an encoded percent for an escape', async ({ request }) => {
+		// '%2564ev' must stay literal rather than decode twice into '/dev'; either way it is not a
+		// route, so the point is that it 404s without the guard throwing on malformed input.
+		expect((await request.get('/%2564ev/kitchen-sink')).status()).toBe(404);
 	});
 });
