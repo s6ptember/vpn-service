@@ -1,0 +1,24 @@
+# Rebuilt inside the image; copying host artefacts in would shadow them with stale output.
+node_modules
+.svelte-kit
+build
+build-scripts
+
+# Never part of a build.
+.git
+.gitignore
+data
+test-results
+playwright-report
+.vscode
+
+# Docs.
+*.md
+
+# Secrets reach the build only through the BuildKit secret mount in the Dockerfile, never through
+# the context. These lines are what make that true.
+#
+# The `**/` matters. Unlike .gitignore, a bare `.env` here anchors to the context root only, so it
+# would miss marzban/.env and `COPY . .` would bake it into the builder layer.
+**/.env
+**/.env.*

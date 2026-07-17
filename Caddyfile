@@ -1,0 +1,45 @@
+# Two subdomains, per tech.md 3 and 17.5: the mini app on one, only Marzban's /sub/* on the other.
+#
+# READ BEFORE HARDENING THIS FILE. Two headers are missing on purpose:
+#
+#   X-Frame-Options — any value breaks the mini app. Telegram Web and Desktop run it inside an
+#   iframe, so DENY/SAMEORIGIN blank the app for those clients. tech.md 9 says: do not set it at all.
+#
+#   Content-Security-Policy — hooks.server.ts already sends `frame-ancestors https://web.telegram.org
+#   https://*.telegram.org`. Setting a CSP here overwrites that response header and locks Telegram
+#   out of the frame, which is the same outage by another route. The app owns this header.
+#
+# Both look like obvious wins from a proxy config and are both outages. Leave them alone.
+
+{
+	# ACME notifications and expiry warnings. Replace before launch.
+	email admin@example.com
+}
+
+app.example.com {
+	encode zstd gzip
+
+	# The only way into the app: it never publishes 3000 to the host.
+	reverse_proxy app:3000
+
+	log
+}
+
+sub.example.com {
+	encode zstd gzip
+
+	# Clients need their subscription link and nothing else. The panel, /api and /dashboard stay on
+	# the docker network, reachable only through an SSH tunnel (tech.md 3, tech.md 9). Marzban
+	# builds these URLs from XRAY_SUBSCRIPTION_URL_PREFIX, so the path stays /sub/* end to end.
+	handle /sub/* {
+		reverse_proxy marzban:8000
+	}
+
+	# Everything else on this host. `abort` drops the connection without confirming that a panel is
+	# behind it; a 404 page would advertise it.
+	handle {
+		abort
+	}
+
+	log
+}

@@ -1,0 +1,146 @@
+# Topology from tech.md 3: caddy + app + app-migrate (one-shot) + marzban on one VPS.
+#
+# The image is built HERE, on the host that owns .env, and never leaves it. That is not a
+# convenience: config.ts reads $env/static/private, so vite inlines the secrets into build/ at
+# build time (see Dockerfile), which makes the image itself a secret. There is no registry push
+# and no CD in this stage by design.
+
+name: vpn-service
+
+# app and app-migrate are the same artefact and must never drift apart.
+x-app: &app
+  build:
+    context: .
+    dockerfile: Dockerfile
+    secrets:
+      - dotenv
+  image: vpn-service-app:local
+  env_file: .env
+  environment:
+    # env_file is layered over the image's ENV, so a .env written for local dev silently downgrades
+    # the container. `environment` outranks env_file and is the only place that can pin these two.
+    #
+    # NODE_ENV: the image already declares production, but .env carries NODE_ENV=development and
+    # would win. The compiled bundle is unaffected (DEV is frozen at build time — see Dockerfile),
+    # yet libraries branch on this at runtime and a container that misreports its own environment is
+    # a debugging trap. Pin it.
+    NODE_ENV: production
+    # Load-bearing, and NOT redundant with the Dockerfile's ENV of the same name: env_file is
+    # applied on top of image ENV, so .env's dev value (./data/app.db) would otherwise win here and
+    # send the migrate script to /app/data/app.db instead of the volume. `environment` outranks
+    # env_file, which puts it back.
+    #
+    # This reaches build-scripts/migrate.js, which reads process.env directly. It does NOT reach
+    # config.ts: that value was inlined at build time. The Dockerfile pins the build-time value to
+    # this same path so the app and the migrator open one file rather than two.
+    DATABASE_PATH: /data/app.db
+  volumes:
+    - app-data:/data
+
+services:
+  caddy:
+    image: caddy:2.10.2-alpine
+    restart: unless-stopped
+    ports:
+      - '80:80'
+      - '443:443'
+      - '443:443/udp' # HTTP/3
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      # Certificates and ACME account keys. Without these volumes every restart re-issues from
+      # Let's Encrypt and walks straight into the rate limit.
+      - caddy-data:/data
+      - caddy-config:/config
+    depends_on:
+      - app
+      - marzban
+    healthcheck:
+      test: ['CMD', 'caddy', 'version']
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+  app:
+    <<: *app
+    restart: unless-stopped
+    # Never published. Caddy is the only way in (tech.md 3).
+    expose:
+      - '3000'
+    depends_on:
+      app-migrate:
+        # The one and only reason two replicas can never migrate one SQLite file at once.
+        condition: service_completed_successfully
+    deploy:
+      # Exactly one. SQLite takes a single writer, and the job worker runs in-process on a
+      # setInterval — a second replica would double every job (tech.md 3, tech.md 6).
+      replicas: 1
+    # Healthcheck is inherited from the Dockerfile.
+
+  app-migrate:
+    <<: *app
+    # A one-shot: it applies migrations and exits. Restarting it would race the app.
+    restart: 'no'
+    command: ['node', 'build-scripts/migrate.js']
+    healthcheck:
+      # Inherited from the Dockerfile and meaningless here: this service serves no HTTP.
+      disable: true
+
+  marzban:
+    # Pinned, never `latest` (tech.md 2). v0.8.4 is the newest STABLE upstream release.
+    # Checked 2026-07-17: v0.8.4 was published 2025-01-09 and is the latest GitHub release;
+    # v1.0.0 has been in beta since 2025-07 and the last image push of any kind was 2025-08.
+    # ~18 months without a stable release is exactly the upstream-liveness signal tech.md 17.6
+    # asks the lead to weigh before launch. Re-check then; MarzbanApi keeps the swap cheap.
+    image: gozargah/marzban:v0.8.4
+    restart: unless-stopped
+    env_file: ./marzban/.env
+    environment:
+      # Set here rather than only in the env file because forgetting it is silent and expensive:
+      # the API returns a relative subscription path, and the client renders a broken QR
+      # (tech.md 3). An explicit `environment` entry also wins over env_file.
+      XRAY_SUBSCRIPTION_URL_PREFIX: https://sub.example.com
+      # Pinned because the Caddyfile matcher is literally `/sub/*`. Upstream defaults this to
+      # "sub", so leaving it implicit couples a proxy route to someone else's default.
+      XRAY_SUBSCRIPTION_PATH: sub
+      UVICORN_HOST: 0.0.0.0
+      UVICORN_PORT: '8000'
+    ports:
+      # VLESS traffic only.
+      #
+      # CONFLICT, lead must decide before launch: tech.md 3 gives Marzban both 443 and 8443 while
+      # also putting Caddy on 443. One host cannot bind 443 twice — publishing both makes
+      # `docker compose up` fail with "port is already allocated". 8443 is published here so the
+      # stack starts. Resolving 443 needs a second host IP ("<ip>:443:443"), or REALITY settling
+      # for 8443, or an SNI-routing Caddy build (caddy-l4, a non-standard image).
+      - '8443:8443'
+      # Port 8000 is deliberately NOT published: the panel and its /api stay on the docker network,
+      # reachable only via SSH tunnel. Caddy exposes just /sub/* (tech.md 3, tech.md 9).
+    expose:
+      - '8000'
+    volumes:
+      - marzban-data:/var/lib/marzban
+    healthcheck:
+      # A TCP connect, not an HTTP route: /docs is disabled by default and /api/* needs a token,
+      # so anything richer would report a healthy panel as unhealthy.
+      test:
+        [
+          'CMD',
+          'python3',
+          '-c',
+          "import socket; socket.create_connection(('127.0.0.1', 8000), 3).close()"
+        ]
+      interval: 30s
+      timeout: 5s
+      start_period: 30s
+      retries: 3
+
+volumes:
+  app-data:
+  marzban-data:
+  caddy-data:
+  caddy-config:
+
+secrets:
+  dotenv:
+    # Build-time only (Dockerfile mounts it for `npm run build`). Not mounted into any container.
+    file: ./.env
