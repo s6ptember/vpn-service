@@ -48,8 +48,14 @@
 	<Toast />
 
 	{#if !session.ready}
-		<!-- Covers the app until the handshake settles, so nobody sees a half-empty screen first. -->
-		<div class="absolute inset-0 z-50 grid place-items-center bg-page" aria-hidden="true">
+		<!-- Covers the app until the handshake settles, so nobody sees a half-empty screen first.
+		     It is server-rendered and detaches on mount, so its absence is also the signal that the
+		     app has hydrated — e2e waits on it rather than racing the pointer listeners. -->
+		<div
+			data-splash
+			class="absolute inset-0 z-50 grid place-items-center bg-page"
+			aria-hidden="true"
+		>
 			<div class="size-8 animate-spin rounded-full border-2 border-line border-t-accent-600"></div>
 		</div>
 	{/if}

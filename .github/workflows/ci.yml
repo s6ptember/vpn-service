@@ -102,12 +102,11 @@ jobs:
           npm run db:migrate
           npm run db:seed
 
-      # tech.md 15 puts playwright in the gate, but the suite is empty until the slices that own the
-      # journey land (tech.md 14: initData → session → FakePayments.simulatePaid → QR). Playwright
-      # exits 1 on "No tests found", which would hold the gate red for reasons no PR can fix.
-      # Remove this flag with the first *.e2e.ts.
+      # e2e/stage0.e2e.ts covers what the skeleton claims: the reference slice, the island, the swipe
+      # thresholds and the guard. tech.md 14's full journey (initData → FakePayments.simulatePaid →
+      # QR) joins it as A1 and A5..A9 land.
       - name: E2E
-        run: npm run test:e2e -- --pass-with-no-tests
+        run: npm run test:e2e
 
       - name: Upload playwright report
         if: failure()
