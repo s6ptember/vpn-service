@@ -7,8 +7,11 @@ import { FAKE_SUB_ORIGIN, FakeMarzban } from '$lib/server/clients/marzban';
 import type { Db } from '$lib/server/db/client';
 import {
 	jobs as jobsTable,
+	promoCodes,
+	promoRedemptions,
 	subscriptions as subscriptionsTable,
 	type PlanRow,
+	type PromoCodeRow,
 	type UserRow
 } from '$lib/server/db/schema';
 import { MarzbanError } from '$lib/server/errors';
@@ -28,6 +31,8 @@ import { SubscriptionProvisionHandler } from './subscription-provision';
  * every deploy that landed mid-job.
  */
 
+const ADMIN_CHAT_ID = 900_000_001;
+
 let db: Db;
 let clock: TestClock;
 let orders: OrderService;
@@ -40,7 +45,7 @@ let user: UserRow;
 let plan: PlanRow;
 
 /** Opens an order and settles it, which is the state the webhook leaves behind. */
-function payFor(durationDays: number, paidAt = clock.now()) {
+function payFor(durationDays: number, paidAt = clock.now(), promoCodeId: number | null = null) {
 	const snapshot = {
 		name: `${durationDays} дней`,
 		durationDays,
@@ -54,7 +59,8 @@ function payFor(durationDays: number, paidAt = clock.now()) {
 		planId: plan.id,
 		plan: snapshot,
 		quote: new PriceCalculator().quote(snapshot, null),
-		provider: 'fake'
+		provider: 'fake',
+		promoCodeId
 	});
 
 	// paidAt is what the fold anchors on, so the specs set it explicitly rather than leaning on
@@ -92,12 +98,34 @@ beforeEach(() => {
 		marzban,
 		queue,
 		silentLogger(),
-		{ now: clock.now }
+		{ now: clock.now, adminChatId: ADMIN_CHAT_ID }
 	);
 
 	user = addUser(db);
 	plan = addPlan(db);
 });
+
+function addPromo(overrides: Partial<PromoCodeRow> = {}): PromoCodeRow {
+	return db
+		.insert(promoCodes)
+		.values({
+			code: 'START30',
+			discountType: 'percent',
+			discountValue: 30,
+			maxUses: null,
+			usedCount: 0,
+			validFrom: null,
+			validUntil: null,
+			isActive: true,
+			createdAt: new Date(clock.now()),
+			archivedAt: null,
+			...overrides
+		})
+		.returning()
+		.get();
+}
+
+const promoRow = (id: number) => db.select().from(promoCodes).where(eq(promoCodes.id, id)).get()!;
 
 describe('SubscriptionProvisionHandler', () => {
 	it('creates the panel user and the subscription row from a paid order', async () => {
@@ -310,6 +338,49 @@ describe('SubscriptionProvisionHandler', () => {
 		// only come from a hand-written job — and it must not buy anybody a free subscription.
 		await expect(handler.handle({ orderId: unpaid.id })).rejects.toThrow(/not paid/);
 		expect(subscriptionRow()).toBeNull();
+	});
+
+	it('spends the promo code exactly once, however often the job runs', async () => {
+		/**
+		 * tech.md 6 makes redeeming an effect of THIS job, and tech.md 6 also says two runs of a
+		 * handler leave one effect. Both at once: a retry after a Marzban timeout must not burn a
+		 * second use of the code.
+		 */
+		const promo = addPromo();
+		const order = payFor(30, clock.now(), promo.id);
+
+		await handler.handle({ orderId: order.id });
+		await handler.handle({ orderId: order.id });
+
+		expect(db.select().from(promoRedemptions).all()).toHaveLength(1);
+		expect(promoRow(promo.id).usedCount).toBe(1);
+	});
+
+	it('grants access and tells the admin when the code ran out before the payment landed', async () => {
+		/**
+		 * Somebody else took the last use while this person was on the payment page. The money is
+		 * already taken, so refusing the subscription over a discount the shop itself quoted would be
+		 * the worse failure — access goes out, the counter stays honest, and the admin hears about it.
+		 */
+		const promo = addPromo({ maxUses: 1, usedCount: 1 });
+		const order = payFor(30, clock.now(), promo.id);
+
+		await handler.handle({ orderId: order.id });
+
+		expect(subscriptionRow()).not.toBeNull();
+		expect(db.select().from(promoRedemptions).all()).toEqual([]);
+		expect(promoRow(promo.id).usedCount).toBe(1);
+		expect(messages().some((job) => job.idempotencyKey === `tg:promo:overspent:${order.id}`)).toBe(
+			true
+		);
+	});
+
+	it('leaves the promo tables alone for an order that carried no code', async () => {
+		const order = payFor(30);
+
+		await handler.handle({ orderId: order.id });
+
+		expect(db.select().from(promoRedemptions).all()).toEqual([]);
 	});
 
 	it('refuses an order that is gone', async () => {
