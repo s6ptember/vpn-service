@@ -10,10 +10,12 @@
 	import Card from '$lib/ui/Card.svelte';
 	import EmptyState from '$lib/ui/EmptyState.svelte';
 	import Avatar from './Avatar.svelte';
+	import PromoBlock from './PromoBlock.svelte';
+	import PurchaseHistory from './PurchaseHistory.svelte';
 	import SubscriptionCard from './SubscriptionCard.svelte';
 	import type { PageProps } from './$types';
 
-	let { data }: PageProps = $props();
+	let { data, form }: PageProps = $props();
 
 	const session = getContext<TelegramSession>(TELEGRAM_SESSION_KEY);
 
@@ -65,7 +67,6 @@
 	<title>Профиль — VPN</title>
 </svelte:head>
 
-<!-- A10 adds the promo block, A12 the purchase history. -->
 <div class="px-4 pt-[max(16px,env(safe-area-inset-top))] pb-28">
 	<h1 class="text-[28px] font-bold tracking-[-.02em]">Профиль</h1>
 
@@ -120,6 +121,21 @@
 					<Button size="sm" class="w-full" onclick={choosePlan}>Выбрать тариф</Button>
 				{/snippet}
 			</EmptyState>
+		{/if}
+
+		<PromoBlock result={form} currency={data.currency} />
+
+		{#if data.history.length > 0}
+			<!--
+				Only once there is something to show. An empty receipts list under a fresh profile is a
+				heading explaining that nothing has happened yet, which the empty state above already
+				says better.
+			-->
+			<h2 class="mt-7 mb-2 px-1 text-[12px] font-semibold tracking-[.06em] text-muted uppercase">
+				История покупок
+			</h2>
+
+			<PurchaseHistory orders={data.history} />
 		{/if}
 
 		{#if session.isAdmin}

@@ -24,6 +24,12 @@ export interface SubscriptionReaderOptions {
 }
 
 /**
+ * How far back the profile's history goes. Nobody scrolls a hundred receipts on a phone, and an
+ * unbounded read grows with the best customer the shop has.
+ */
+const HISTORY_LIMIT = 20;
+
+/**
  * What a page needs to say about one person's access, assembled once.
  *
  * It reaches across three domains on purpose: the answer genuinely spans them, and the alternative
@@ -40,6 +46,17 @@ export class SubscriptionReader {
 		opts: SubscriptionReaderOptions = {}
 	) {
 		this.now = opts.now ?? Date.now;
+	}
+
+	/**
+	 * A12 — the receipts, newest first (tech.md 11: «Ниже история покупок из `orders`»).
+	 *
+	 * It maps through `toOrderDTO` for the reason that mapper exists: an `orders` row carries
+	 * `providerPaymentIntentId` and `providerSessionId`, and a route that received rows would be one
+	 * spread away from serialising both to a phone.
+	 */
+	historyFor(userId: number, limit = HISTORY_LIMIT): OrderDTO[] {
+		return this.orders.listForUser(userId, limit).map(toOrderDTO);
 	}
 
 	forUser(userId: number): AccessView {
