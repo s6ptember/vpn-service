@@ -34,6 +34,15 @@ x-app: &app
     # config.ts: that value was inlined at build time. The Dockerfile pins the build-time value to
     # this same path so the app and the migrator open one file rather than two.
     DATABASE_PATH: /data/app.db
+    # Read by adapter-node's handler, not by config.ts. Without it getClientAddress() returns the
+    # socket peer — which behind caddy is caddy's own container IP, collapsing every per-IP limit
+    # (CLAUDE.md 2) into one bucket shared by the whole application.
+    #
+    # Depth 1 means "the last entry of X-Forwarded-For", and that entry is the one caddy appends
+    # itself. Anything a client sends in that header sits to the left of it and is never read, so a
+    # spoofed value cannot buy its own budget. Raising the depth would start trusting client input.
+    ADDRESS_HEADER: x-forwarded-for
+    XFF_DEPTH: '1'
   volumes:
     - app-data:/data
 

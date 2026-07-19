@@ -66,11 +66,9 @@ export const users = new UserService(db);
  * but it is infrastructure rather than request data — nothing in it belongs to one person, and one
  * replica (tech.md 3) is what lets it live in this process.
  *
- * The key is whatever getClientAddress() reports. Behind Caddy that is the proxy's own address
- * until ADDRESS_HEADER is set on the app container, which no environment in this repo does — see
- * the CONTRACT GAP in the PR. Until it is, the budget is shared, which is exactly why
- * TelegramAuthService charges refusals only: a shared bucket must not be able to refuse a login
- * that carries a valid signature.
+ * The key is whatever getClientAddress() reports, which is a real client address only because
+ * ADDRESS_HEADER and XFF_DEPTH are set on the app container (docker-compose.yml). Run the app
+ * behind a proxy without them and every request keys on the proxy instead.
  */
 const initDataLimiter = new RateLimiter({ limit: 10, windowMs: 60_000 });
 
