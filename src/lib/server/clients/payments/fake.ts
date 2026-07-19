@@ -102,7 +102,34 @@ export class FakePayments implements PaymentProvider {
 
 		const result = v.safeParse(PaymentEventSchema, body);
 		if (!result.success) throw new PaymentProviderError('fake webhook body is not a PaymentEvent');
-		return result.output;
+
+		const event = result.output;
+
+		/**
+		 * A paid event must describe a checkout this process actually opened, down to the session id
+		 * and the amount. Stripe's signature carries that guarantee for real; FAKE_WEBHOOK_SECRET is
+		 * a constant in this repository and carries none, so without this check the endpoint would
+		 * accept any JSON anybody cared to write and mint a subscription from it.
+		 *
+		 * It narrows the hole rather than closing it — see the CONTRACT GAP filed with this slice
+		 * about there being no env flag that keeps PAYMENT_PROVIDER=fake out of a real deployment.
+		 */
+		if (event.kind === 'paid') {
+			const checkout = this.checkouts.find((entry) => entry.publicId === event.orderPublicId);
+
+			if (!checkout) {
+				throw new PaymentProviderError(`fake webhook names an order nobody checked out`);
+			}
+			if (
+				event.sessionId !== checkout.sessionId ||
+				event.amountMinor !== checkout.amountMinor ||
+				event.currency !== checkout.currency
+			) {
+				throw new PaymentProviderError('fake webhook contradicts the checkout it names');
+			}
+		}
+
+		return event;
 	}
 
 	/** Builds the event Stripe would have sent, so e2e walks the whole path with zero Stripe traffic. */

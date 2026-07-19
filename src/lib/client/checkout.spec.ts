@@ -91,6 +91,39 @@ describe('CheckoutWatcher', () => {
 		expect(watcher().phase).toBe('idle');
 	});
 
+	it('does not mistake the previous order for the one just opened', async () => {
+		/**
+		 * The renewal case, and a bug the e2e caught before this test existed: at the moment Купить
+		 * is pressed, `data` still describes the world as it was when the page loaded — so the
+		 * newest order it knows about is the LAST one, already paid and provisioned. Reading that as
+		 * the answer announces «Готово» over a payment nobody has made.
+		 */
+		load.view = {
+			subscription: subscription(),
+			latestOrder: order({ id: 1, status: 'paid', paidAt: PAID_AT - 30 * DAY_MS }),
+			awaitingKey: false
+		};
+		const w = watcher();
+
+		w.start(2);
+
+		expect(w.phase).toBe('waiting');
+		expect(w.paid).toBe(false);
+
+		// It resolves only once the load catches up with the order it was told to wait for.
+		load.view = { subscription: subscription(), latestOrder: order({ id: 2 }), awaitingKey: false };
+		await advance(3_000);
+		expect(w.phase).toBe('waiting');
+
+		load.view = {
+			subscription: subscription({ expiresAt: PAID_AT + 60 * DAY_MS }),
+			latestOrder: order({ id: 2, status: 'paid', paidAt: PAID_AT }),
+			awaitingKey: false
+		};
+		await advance(3_000);
+		expect(w.phase).toBe('ready');
+	});
+
 	it('waits while the order is still pending', async () => {
 		load.view = { subscription: null, latestOrder: order(), awaitingKey: false };
 		const w = watcher();

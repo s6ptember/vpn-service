@@ -64,6 +64,17 @@ export class CheckoutWatcher {
 	#gaveUp = $state(false);
 	#canceled = $state(false);
 
+	/**
+	 * The order this watcher is waiting for, when it knows. `data` still describes the world as it
+	 * was when the page loaded — the order that was just opened is not in it — so without this the
+	 * machine would read the PREVIOUS order, find it paid and provisioned, and announce «Готово»
+	 * over a payment nobody has made yet.
+	 *
+	 * Null on the deeplink path, where there is nothing to be stale: Telegram has just relaunched
+	 * the app and the load ran after the payment, not before it.
+	 */
+	#expectedOrderId = $state<number | null>(null);
+
 	#polling = false;
 	#startedAt = 0;
 	#timer: ReturnType<typeof setTimeout> | null = null;
@@ -89,7 +100,13 @@ export class CheckoutWatcher {
 
 		const { latestOrder, awaitingKey } = this.#read();
 
-		if (latestOrder === null) return this.#gaveUp ? 'timeout' : 'waiting';
+		// Nothing to read yet, or what we can read predates the order we are waiting for.
+		if (
+			latestOrder === null ||
+			(this.#expectedOrderId !== null && latestOrder.id !== this.#expectedOrderId)
+		) {
+			return this.#gaveUp ? 'timeout' : 'waiting';
+		}
 
 		switch (latestOrder.status) {
 			case 'failed':
@@ -108,20 +125,32 @@ export class CheckoutWatcher {
 		return TERMINAL.has(this.phase);
 	}
 
+	/** Whether the load has caught up with the order this watcher is waiting for. */
+	get #current(): boolean {
+		const { latestOrder } = this.#read();
+		return this.#expectedOrderId === null || latestOrder?.id === this.#expectedOrderId;
+	}
+
 	/**
 	 * Whether the payment itself succeeded, even if the key has not arrived. The «не дождались»
 	 * screen reads it: telling somebody who has been charged that nothing happened would be both
 	 * wrong and alarming.
 	 */
 	get paid(): boolean {
-		return this.#read().latestOrder?.status === 'paid';
+		return this.#current && this.#read().latestOrder?.status === 'paid';
 	}
 
-	/** Starts announcing and, unless the answer is already in, starts asking. */
-	start(): void {
+	/**
+	 * Starts announcing and, unless the answer is already in, starts asking.
+	 *
+	 * `orderId` comes from the checkout action. Pass it whenever it is known: it is what stops the
+	 * previous, already-paid order from being mistaken for this one.
+	 */
+	start(orderId: number | null = null): void {
 		this.#announcing = true;
 		this.#canceled = false;
 		this.#gaveUp = false;
+		this.#expectedOrderId = orderId;
 		this.#startedAt = this.#now();
 
 		if (this.settled || this.#polling) return;
@@ -143,6 +172,7 @@ export class CheckoutWatcher {
 		this.#announcing = false;
 		this.#canceled = false;
 		this.#gaveUp = false;
+		this.#expectedOrderId = null;
 	}
 
 	/** Timers live outside Svelte, so they are stopped by hand — from a component's $effect cleanup. */

@@ -54,8 +54,13 @@
 		return async ({ result, update }) => {
 			submittingPlanId = null;
 
-			if (result.type === 'success' && typeof result.data?.url === 'string') {
+			if (
+				result.type === 'success' &&
+				typeof result.data?.url === 'string' &&
+				typeof result.data?.orderId === 'number'
+			) {
 				haptic();
+				const orderId = result.data.orderId;
 
 				/**
 				 * The payment page opens in a real browser (tech.md 10) and the mini app stays behind
@@ -64,7 +69,8 @@
 				 * they never saw.
 				 */
 				if (openExternal(result.data.url)) {
-					watcher.start();
+					// The id matters: `data` still holds the PREVIOUS order, which may well be paid.
+					watcher.start(orderId);
 				} else {
 					toasts.push('Не удалось открыть страницу оплаты. Разрешите всплывающие окна.', 'danger');
 				}
