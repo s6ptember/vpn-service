@@ -126,12 +126,16 @@
 						<p class="mt-3 text-[14px] text-muted">{answer.message}</p>
 					{/if}
 
-					<details class="mt-3 border-t border-line pt-3">
+					<details class="group mt-3 border-t border-line pt-3">
 						<summary
 							class="flex cursor-pointer list-none items-center justify-between text-[15px] font-medium press"
 						>
 							Изменить
-							<ChevronDown class="size-4 text-muted" aria-hidden="true" />
+							<!-- The chevron follows the panel: a static one over an open panel is a lie. -->
+							<ChevronDown
+								class="size-4 text-muted transition-transform group-open:rotate-180 motion-reduce:transition-none"
+								aria-hidden="true"
+							/>
 						</summary>
 
 						<div class="mt-3">

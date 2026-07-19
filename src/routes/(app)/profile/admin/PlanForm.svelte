@@ -39,8 +39,8 @@
 	 * afresh, and `values` is the only surviving record of the attempt. An unchecked box submits
 	 * nothing at all, so the echo has to be recognised as a whole rather than field by field.
 	 */
-	function seed(): Fields {
-		const echoed = Object.keys(values).length > 0;
+	function seed(useEcho = true): Fields {
+		const echoed = useEcho && Object.keys(values).length > 0;
 		const field = (key: string, fallback: string) => values[key] ?? (echoed ? '' : fallback);
 
 		return {
@@ -59,7 +59,7 @@
 
 	// Read once, on purpose: after mount these inputs belong to the person typing in them, and a
 	// prop change must not overwrite an edit in progress.
-	let fields = $state(untrack(seed));
+	let fields = $state(untrack(() => seed()));
 
 	let saving = $state(false);
 
@@ -80,7 +80,9 @@
 			// The inputs are controlled by `fields`, so a native form reset would leave them untouched.
 			// Clearing is only right for the create form anyway: an edit that saved should keep showing
 			// what it saved, and a rejected submit of either kind must keep what was typed.
-			if (result.type === 'success' && !plan) fields = seed();
+			// Seeded without the echo, or a previously rejected attempt would come back instead of a
+			// blank form — `values` still holds it until `update()` swaps the props.
+			if (result.type === 'success' && !plan) fields = seed(false);
 
 			await update({ reset: false });
 			saving = false;
