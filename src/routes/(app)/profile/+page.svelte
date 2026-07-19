@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { getContext } from 'svelte';
-	import { ChevronRight, SlidersHorizontal } from 'lucide-svelte';
+	import { ChevronRight, LoaderCircle, SlidersHorizontal } from 'lucide-svelte';
 	import { goto } from '$app/navigation';
 	import { resolve } from '$app/paths';
 	import { haptic } from '$lib/client/telegram-haptics';
@@ -9,6 +9,10 @@
 	import Card from '$lib/ui/Card.svelte';
 	import EmptyState from '$lib/ui/EmptyState.svelte';
 	import Avatar from './Avatar.svelte';
+	import SubscriptionCard from './SubscriptionCard.svelte';
+	import type { PageProps } from './$types';
+
+	let { data }: PageProps = $props();
 
 	const session = getContext<TelegramSession>(TELEGRAM_SESSION_KEY);
 
@@ -30,8 +34,7 @@
 	<title>Профиль — VPN</title>
 </svelte:head>
 
-<!-- A9 fills the subscription card in with the real plan, QR and link; A10 adds the promo block,
-     A12 the purchase history. -->
+<!-- A10 adds the promo block, A12 the purchase history. -->
 <div class="px-4 pt-[max(16px,env(safe-area-inset-top))] pb-28">
 	<h1 class="text-[28px] font-bold tracking-[-.02em]">Профиль</h1>
 
@@ -48,14 +51,37 @@
 			Подписка
 		</h2>
 
-		<EmptyState
-			title="Подписки нет"
-			description="Выберите тариф — ключ придёт сюда сразу после оплаты."
-		>
-			{#snippet action()}
-				<Button size="sm" class="w-full" onclick={choosePlan}>Выбрать тариф</Button>
-			{/snippet}
-		</EmptyState>
+		{#if data.subscription}
+			<SubscriptionCard subscription={data.subscription} />
+		{:else if data.awaitingKey}
+			<!--
+				Paid, and the provision job has not finished. The empty state below must never appear
+				here: inviting somebody to buy the thing they just bought is the worst sentence this
+				screen could say.
+			-->
+			<Card>
+				<div class="flex items-start gap-3">
+					<span class="spinner mt-0.5 block shrink-0 animate-spin text-accent-600">
+						<LoaderCircle size={18} aria-hidden="true" />
+					</span>
+					<div class="min-w-0" role="status" aria-live="polite">
+						<p class="text-[16px] font-semibold">Оплата прошла</p>
+						<p class="mt-1 text-[14px] text-muted">
+							Готовим ключ. Он появится здесь и придёт вам в Telegram.
+						</p>
+					</div>
+				</div>
+			</Card>
+		{:else}
+			<EmptyState
+				title="Подписки нет"
+				description="Выберите тариф — ключ придёт сюда сразу после оплаты."
+			>
+				{#snippet action()}
+					<Button size="sm" class="w-full" onclick={choosePlan}>Выбрать тариф</Button>
+				{/snippet}
+			</EmptyState>
+		{/if}
 
 		{#if session.isAdmin}
 			<!--
@@ -88,3 +114,11 @@
 		</div>
 	{/if}
 </div>
+
+<style>
+	@media (prefers-reduced-motion: reduce) {
+		.spinner {
+			animation-duration: 1.6s;
+		}
+	}
+</style>
