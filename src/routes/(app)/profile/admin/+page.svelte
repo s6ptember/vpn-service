@@ -7,35 +7,43 @@
 	import EmptyState from '$lib/ui/EmptyState.svelte';
 	import Modal from '$lib/ui/Modal.svelte';
 	import Money from '$lib/ui/Money.svelte';
-	import type { PlanDTO } from '$lib/types';
+	import { formatDate } from '../../dates';
 	import { formatDays, formatTraffic } from '../../plan-value';
 	import PlanForm from './PlanForm.svelte';
+	import PromoForm from './PromoForm.svelte';
 	import type { PageProps } from './$types';
 
 	let { data, form }: PageProps = $props();
 
 	let creating = $state(false);
-	/** The plan the confirmation is about, and the form that will do the writing if it is confirmed. */
-	let archiving = $state<{ plan: PlanDTO; form: HTMLFormElement } | null>(null);
+	let creatingPromo = $state(false);
+	/** What the confirmation is about, and the form that will do the writing if it is confirmed. */
+	let archiving = $state<{ title: string; body: string; form: HTMLFormElement } | null>(null);
 	let confirmOpen = $state(false);
 
-	/** An answer belongs to exactly one form; every other block stays quiet. */
-	const answerFor = (target: number | null) => (form?.target === target ? form : null);
+	/**
+	 * An answer belongs to exactly one form; every other block stays quiet. Both halves of the target
+	 * are compared — plans and promo codes number themselves independently, so an answer about promo 3
+	 * must not surface under plan 3.
+	 */
+	const answerFor = (kind: 'plan' | 'promo', id: number | null) =>
+		form?.target.kind === kind && form.target.id === id ? form : null;
 
 	let listed = $derived(new Set(data.plans.map((plan) => plan.id)));
+	let listedPromos = $derived(new Set(data.promoCodes.map((promo) => promo.id)));
 
 	/**
 	 * Whether the block that owns the answer is on screen to show it. Archiving is the case that
 	 * needs this: the plan it reports on is gone from the list by the time the answer arrives, so
 	 * without a page-level line the admin would click "В архив" and see nothing happen at all.
 	 */
-	let answerHasHome = $derived(
-		form === null || form === undefined
-			? true
-			: form.target === null
-				? creating
-				: listed.has(form.target)
-	);
+	let answerHasHome = $derived.by(() => {
+		if (!form) return true;
+
+		const { kind, id } = form.target;
+		if (kind === 'plan') return id === null ? creating : listed.has(id);
+		return id === null ? creatingPromo : listedPromos.has(id);
+	});
 
 	let banner = $derived(answerHasHome ? null : (form?.message ?? null));
 
@@ -43,15 +51,26 @@
 	const tone = (ok: boolean) => (ok ? 'text-muted' : 'text-danger-700');
 
 	/**
+	 * The validity window in one line. Both columns are nullable and each combination means something
+	 * different, so the four cases are spelled out rather than joined with a dash around empty strings.
+	 */
+	function formatPromoWindow(from: number | null, until: number | null): string {
+		if (from === null && until === null) return 'Работает без ограничения по времени';
+		if (from === null) return `До ${formatDate(until!)}`;
+		if (until === null) return `С ${formatDate(from)}`;
+		return `${formatDate(from)} — ${formatDate(until)}`;
+	}
+
+	/**
 	 * Intercepts the archive submit so the dialog can ask first. Without JS the button submits its
 	 * own form directly: no confirmation step, but the write still works.
 	 */
-	function askArchive(event: MouseEvent, plan: PlanDTO) {
+	function askArchive(event: MouseEvent, title: string, body: string) {
 		const form = (event.currentTarget as HTMLElement).closest('form');
 		if (!form) return;
 
 		event.preventDefault();
-		archiving = { plan, form };
+		archiving = { title, body, form };
 		confirmOpen = true;
 	}
 </script>
@@ -83,7 +102,7 @@
 	</div>
 
 	{#if creating}
-		{@const answer = answerFor(null)}
+		{@const answer = answerFor('plan', null)}
 
 		<div class="mt-3">
 			<Card>
@@ -112,7 +131,7 @@
 	{:else}
 		<div class="mt-3 space-y-3">
 			{#each data.plans as plan (plan.id)}
-				{@const answer = answerFor(plan.id)}
+				{@const answer = answerFor('plan', plan.id)}
 
 				<Card>
 					<div class="flex items-start justify-between gap-3">
@@ -170,7 +189,12 @@
 									variant="danger"
 									size="sm"
 									class="w-full"
-									onclick={(event) => askArchive(event, plan)}
+									onclick={(event) =>
+										askArchive(
+											event,
+											'В архив?',
+											`«${plan.name}» пропадёт с главной и из этого списка. Прошлые заказы останутся, вернуть тариф обратно нельзя.`
+										)}
 									aria-label="Отправить тариф {plan.name} в архив"
 								>
 									В архив
@@ -187,17 +211,149 @@
 		Тарифы не удаляются: заказы ссылаются на них, поэтому архивный тариф просто исчезает из списка и
 		с главной.
 	</p>
+
+	<!-- A11 — promo codes. Same shape as the plans above: create, edit inline, archive. -->
+	<div class="mt-8 flex items-center justify-between gap-3">
+		<h2 class="px-1 text-[12px] font-semibold tracking-[.06em] text-muted uppercase">Промокоды</h2>
+		<Button
+			size="sm"
+			variant="ghost"
+			onclick={() => (creatingPromo = !creatingPromo)}
+			aria-label={creatingPromo ? 'Свернуть форму нового промокода' : 'Создать промокод'}
+		>
+			<span class="flex items-center gap-1.5">
+				<Plus class="size-4" aria-hidden="true" />
+				Новый
+			</span>
+		</Button>
+	</div>
+
+	{#if creatingPromo}
+		{@const answer = answerFor('promo', null)}
+
+		<div class="mt-3">
+			<Card>
+				{#if answer?.message}
+					<p class={['mb-3 text-[14px]', tone(answer.ok)]}>{answer.message}</p>
+				{/if}
+
+				<PromoForm
+					action="?/createPromo"
+					currency={data.currency}
+					errors={answer?.errors ?? {}}
+					values={answer?.values ?? {}}
+					submitLabel="Создать промокод"
+				/>
+			</Card>
+		</div>
+	{/if}
+
+	{#if data.promoCodes.length === 0}
+		<div class="mt-3">
+			<EmptyState
+				title="Промокодов нет"
+				description="Создайте первый — его сразу можно будет применить при покупке."
+			/>
+		</div>
+	{:else}
+		<div class="mt-3 space-y-3">
+			{#each data.promoCodes as promo (promo.id)}
+				{@const answer = answerFor('promo', promo.id)}
+				{@const spent = promo.maxUses !== null && promo.usedCount >= promo.maxUses}
+
+				<Card>
+					<div class="flex items-start justify-between gap-3">
+						<div class="min-w-0">
+							<div class="flex flex-wrap items-center gap-2">
+								<h3 class="text-[17px] leading-none font-semibold tracking-[.04em]">
+									{promo.code}
+								</h3>
+								{#if !promo.isActive}
+									<Badge tone="warn">Выключен</Badge>
+								{:else if spent}
+									<!-- Still switched on, and it refuses every customer: worth saying out loud. -->
+									<Badge tone="neutral">Разобрали</Badge>
+								{/if}
+							</div>
+							<p class="mt-1.5 text-[13px] text-muted">
+								{formatPromoWindow(promo.validFrom, promo.validUntil)}
+							</p>
+						</div>
+						<div class="shrink-0 text-right">
+							<p class="text-[17px] leading-none font-bold tabular-nums">
+								{#if promo.discountType === 'percent'}
+									−{promo.discountValue}%
+								{:else}
+									−<Money minor={promo.discountValue} currency={data.currency} />
+								{/if}
+							</p>
+							<p class="mt-1.5 text-[13px] text-muted tabular-nums">
+								{promo.usedCount} / {promo.maxUses ?? '∞'}
+							</p>
+						</div>
+					</div>
+
+					{#if answer?.message}
+						<p class={['mt-3 text-[14px]', tone(answer.ok)]}>{answer.message}</p>
+					{/if}
+
+					<details class="group mt-3 border-t border-line pt-3">
+						<summary
+							class="flex cursor-pointer list-none items-center justify-between text-[15px] font-medium press"
+						>
+							Изменить
+							<ChevronDown
+								class="size-4 text-muted transition-transform group-open:rotate-180 motion-reduce:transition-none"
+								aria-hidden="true"
+							/>
+						</summary>
+
+						<div class="mt-3">
+							<PromoForm
+								action="?/updatePromo"
+								{promo}
+								currency={data.currency}
+								errors={answer?.errors ?? {}}
+								values={answer?.values ?? {}}
+								submitLabel="Сохранить"
+							/>
+
+							<form method="POST" action="?/archivePromo" use:enhance class="mt-3">
+								<input type="hidden" name="id" value={promo.id} />
+								<Button
+									type="submit"
+									variant="danger"
+									size="sm"
+									class="w-full"
+									onclick={(event) =>
+										askArchive(
+											event,
+											'В архив?',
+											`«${promo.code}» перестанет работать у всех. Прошлые заказы и применения останутся, вернуть промокод обратно нельзя.`
+										)}
+									aria-label="Отправить промокод {promo.code} в архив"
+								>
+									В архив
+								</Button>
+							</form>
+						</div>
+					</details>
+				</Card>
+			{/each}
+		</div>
+	{/if}
+
+	<p class="mt-4 px-1 text-[13px] text-muted">
+		Использование засчитывается после оплаты. Один промокод применяется один раз на человека.
+	</p>
 </div>
 
 <Modal
 	bind:open={confirmOpen}
-	title="В архив?"
+	title={archiving?.title ?? 'В архив?'}
 	confirmLabel="В архив"
 	cancelLabel="Отмена"
 	onconfirm={() => archiving?.form.requestSubmit()}
 >
-	<p class="text-[14px] text-muted">
-		«{archiving?.plan.name}» пропадёт с главной и из этого списка. Прошлые заказы останутся, вернуть
-		тариф обратно нельзя.
-	</p>
+	<p class="text-[14px] text-muted">{archiving?.body}</p>
 </Modal>
