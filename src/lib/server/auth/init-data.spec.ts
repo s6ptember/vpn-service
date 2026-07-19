@@ -197,7 +197,7 @@ describe('InitDataValidator', () => {
 	});
 
 	it('never puts initData or the bot token into the error it throws', () => {
-		// tech.md 2: initData and tokens must not reach a log line, and errors are logged whole.
+		// CLAUDE.md 2: initData and tokens must not reach a log line, and errors are logged whole.
 		try {
 			validator().validate(initData({}, { botToken: 'wrong' }));
 			expect.unreachable('validate must throw on a bad signature');

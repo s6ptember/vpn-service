@@ -1,18 +1,21 @@
 /**
- * Fixed-window counters, in memory. tech.md 2 asks for three of them — initData 10/min per IP,
+ * Fixed-window counters, in memory. CLAUDE.md 2 asks for three of them — initData 10/min per IP,
  * promo 5 per 10 min per person, support 3/hour — and one replica (tech.md 3) is what makes an
  * in-process Map enough. A shared store would be the answer the day a second replica exists.
  *
  * The window is fixed rather than sliding on purpose: a burst straddling a boundary can spend two
  * windows back to back, which is acceptable for abuse control and costs one map entry per key
  * instead of a timestamp list.
+ *
+ * Reading and spending are separate calls (`peek` and `consume`) so a caller can gate on the budget
+ * before doing expensive work and still decide for itself which outcomes are worth counting.
  */
 
 export interface RateLimitDecision {
 	allowed: boolean;
 	/** Seconds until the window resets. Feeds RateLimitError and the Retry-After header. */
 	retryAfterSec: number;
-	/** Attempts left in the current window; zero once the caller has just spent the last one. */
+	/** Attempts left in the current window. */
 	remaining: number;
 }
 
@@ -21,10 +24,10 @@ export interface RateLimiterOptions {
 	windowMs: number;
 	now?: () => number;
 	/**
-	 * Ceiling on tracked keys. The key is caller-controlled (an IP), so without a ceiling a spray
-	 * of forged sources is an unbounded allocation in a long-lived process.
+	 * Size at which a sweep of expired windows is triggered. It is a housekeeping threshold, not a
+	 * hard cap: see #reclaim for why a live window is never dropped to stay under it.
 	 */
-	maxKeys?: number;
+	sweepAt?: number;
 }
 
 interface Window {
@@ -32,36 +35,48 @@ interface Window {
 	resetAt: number;
 }
 
-const DEFAULT_MAX_KEYS = 10_000;
+const DEFAULT_SWEEP_AT = 10_000;
 
 export class RateLimiter {
 	readonly #windows = new Map<string, Window>();
 	readonly #now: () => number;
-	readonly #maxKeys: number;
+	readonly #sweepAt: number;
 
 	constructor(private readonly opts: RateLimiterOptions) {
 		this.#now = opts.now ?? Date.now;
-		this.#maxKeys = opts.maxKeys ?? DEFAULT_MAX_KEYS;
+		this.#sweepAt = opts.sweepAt ?? DEFAULT_SWEEP_AT;
 	}
 
-	/** Counts one attempt against `key` and says whether it may proceed. */
-	check(key: string): RateLimitDecision {
+	/** Reads the budget without spending it. Use it to refuse before doing the expensive work. */
+	peek(key: string): RateLimitDecision {
 		const now = this.#now();
-		const existing = this.#windows.get(key);
+		const window = this.#live(key, now);
 
-		if (!existing || existing.resetAt <= now) {
-			this.#evictIfCrowded(now);
-			const window = { count: 1, resetAt: now + this.opts.windowMs };
+		if (!window) return { allowed: true, retryAfterSec: 0, remaining: this.opts.limit };
+		return this.#decide(window, now, window.count < this.opts.limit);
+	}
+
+	/** Counts one attempt against `key` and says whether that attempt was within budget. */
+	consume(key: string): RateLimitDecision {
+		const now = this.#now();
+		let window = this.#live(key, now);
+
+		if (!window) {
+			this.#reclaim(now);
+			window = { count: 0, resetAt: now + this.opts.windowMs };
 			this.#windows.set(key, window);
-			return this.#decide(window, now);
 		}
 
-		existing.count += 1;
-		return this.#decide(existing, now);
+		window.count += 1;
+		return this.#decide(window, now, window.count <= this.opts.limit);
 	}
 
-	#decide(window: Window, now: number): RateLimitDecision {
-		const allowed = window.count <= this.opts.limit;
+	#live(key: string, now: number): Window | null {
+		const window = this.#windows.get(key);
+		return window && window.resetAt > now ? window : null;
+	}
+
+	#decide(window: Window, now: number, allowed: boolean): RateLimitDecision {
 		return {
 			allowed,
 			// Ceil, so a caller who waits exactly this long lands after the reset, not on it.
@@ -70,22 +85,21 @@ export class RateLimiter {
 		};
 	}
 
-	#evictIfCrowded(now: number): void {
-		if (this.#windows.size < this.#maxKeys) return;
+	/**
+	 * Drops windows that have already expired. It deliberately stops there: evicting a LIVE window
+	 * would reset the counter of whoever it belongs to, and the first thing a stranger would do with
+	 * that is spray fresh keys until the entry counting their own attempts falls out — unlimited
+	 * attempts through the front door of the limiter itself.
+	 *
+	 * So the map may exceed sweepAt under a spray. What bounds it is the window: live entries are
+	 * only ever the distinct keys seen in the last windowMs, and each is two numbers. Growth is
+	 * transient, and the next sweep reclaims it.
+	 */
+	#reclaim(now: number): void {
+		if (this.#windows.size < this.#sweepAt) return;
 
 		for (const [key, window] of this.#windows) {
 			if (window.resetAt <= now) this.#windows.delete(key);
-		}
-
-		// Everything is still live: drop the oldest insertions, which Map iterates first. Losing a
-		// counter costs one extra allowed attempt; refusing to forget costs the process.
-		if (this.#windows.size >= this.#maxKeys) {
-			const excess = this.#windows.size - this.#maxKeys + 1;
-			let dropped = 0;
-			for (const key of this.#windows.keys()) {
-				this.#windows.delete(key);
-				if (++dropped >= excess) break;
-			}
 		}
 	}
 }

@@ -46,7 +46,7 @@ export const POST: RequestHandler = async ({ request, cookies, locals, getClient
 
 		sessions.issue(cookies, user.id);
 
-		// Ids only. The initData string itself never reaches a log line (tech.md 2).
+		// Ids only. The initData string itself never reaches a log line (CLAUDE.md 2).
 		requestLog.info('auth_session_issued', { userId: user.id, telegramId: user.telegramId });
 
 		return json({ ok: true });

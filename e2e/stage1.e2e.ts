@@ -168,8 +168,9 @@ test.describe('profile', () => {
 });
 
 /**
- * Last on purpose: the limiter counts per IP and every test here shares 127.0.0.1, so spending the
- * budget earlier in the file would starve whatever ran next.
+ * Last on purpose. Only refused attempts spend the budget, so the sign-ins above are unaffected —
+ * but this test spends it deliberately, and every test here shares 127.0.0.1, so any refusal
+ * expected after it would come back as a 429 instead of the code it was checking for.
  */
 test.describe('rate limit', () => {
 	test('answers 429 with a Retry-After once the per-IP budget is spent', async ({ request }) => {

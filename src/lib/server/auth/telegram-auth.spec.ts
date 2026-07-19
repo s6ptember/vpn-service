@@ -11,7 +11,7 @@ import { UserService } from './user-service';
 
 /**
  * The seam A1 promises: a signed payload becomes an account, an unsigned one becomes nothing, a
- * blocked account never becomes a session, and a stranger cannot spend more than tech.md 2's ten
+ * blocked account never becomes a session, and a stranger cannot spend more than CLAUDE.md 2's ten
  * attempts a minute. Assembled from the real classes — the point is that they agree with each
  * other, which a mock of the validator would hide.
  */
@@ -95,7 +95,7 @@ describe('TelegramAuthService.exchange', () => {
 		);
 	});
 
-	it('caps attempts per IP and says when to come back', () => {
+	it('caps refused attempts per IP and says when to come back', () => {
 		const auth = service(3);
 		const bad = initData(ALEX, 'someone-elses-token');
 
@@ -105,19 +105,46 @@ describe('TelegramAuthService.exchange', () => {
 			);
 		}
 
-		// The fourth is stopped before the HMAC runs, which is the point of counting first.
+		// The fourth is stopped before the HMAC runs: past the budget, a stranger orders no work.
 		expect(() => auth.exchange(bad, IP)).toThrow(
 			expect.objectContaining({ code: 'rate_limit', retryAfterSec: 60 })
 		);
 	});
 
-	it('does not let one flooded IP block a different person', () => {
-		const auth = service(1);
-		auth.exchange(initData(ALEX), IP);
+	it('does not charge the budget for a login that proves it holds our HMAC', () => {
+		// Several people share one source address behind a proxy, on carrier NAT and in an office.
+		// Charging valid logins would turn the abuse limit into an outage for all of them.
+		const auth = service(2);
 
+		for (let attempt = 1; attempt <= 5; attempt++) {
+			expect(() => auth.exchange(initData(ALEX), IP)).not.toThrow();
+		}
+	});
+
+	it('counts a blocked account against the budget, since it proves nothing about intent', () => {
+		const auth = service(1);
+		const created = auth.exchange(initData(ALEX), IP);
+		db.update(users).set({ isBlocked: true }).where(eq(users.id, created.id)).run();
+
+		expect(() => auth.exchange(initData(ALEX), IP)).toThrow(
+			expect.objectContaining({ code: 'auth_blocked' })
+		);
 		expect(() => auth.exchange(initData(ALEX), IP)).toThrow(
 			expect.objectContaining({ code: 'rate_limit' })
 		);
-		expect(() => auth.exchange(initData(ALEX), '198.51.100.9')).not.toThrow();
+	});
+
+	it('does not let one flooded IP block a different person', () => {
+		const auth = service(1);
+		const bad = initData(ALEX, 'someone-elses-token');
+
+		expect(() => auth.exchange(bad, IP)).toThrow(
+			expect.objectContaining({ code: 'auth_bad_signature' })
+		);
+		expect(() => auth.exchange(bad, IP)).toThrow(expect.objectContaining({ code: 'rate_limit' }));
+
+		expect(() => auth.exchange(bad, '198.51.100.9')).toThrow(
+			expect.objectContaining({ code: 'auth_bad_signature' })
+		);
 	});
 });

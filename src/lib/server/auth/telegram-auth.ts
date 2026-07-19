@@ -1,4 +1,4 @@
-import { AuthError, RateLimitError } from '../errors';
+import { AppError, AuthError, RateLimitError } from '../errors';
 import type { RateLimiter } from '../rate-limit';
 import type { UserRow } from '../db/schema';
 import type { InitDataValidator } from './init-data';
@@ -23,17 +23,29 @@ export class TelegramAuthService {
 	 * ValidationError. Returns the row the session cookie should be issued for.
 	 */
 	exchange(rawInitData: string, clientIp: string): UserRow {
-		// Counted before the HMAC: the point of the limit is to cap the work a stranger can order,
-		// and the signature check is the expensive part of it (tech.md 2, 10/min per IP).
-		const decision = this.limiter.check(clientIp);
-		if (!decision.allowed) throw new RateLimitError(decision.retryAfterSec);
+		/**
+		 * Refused attempts are what the budget pays for (CLAUDE.md 2: 10/min per IP). A login that
+		 * proves it holds our HMAC is not abuse, and charging it would turn the limiter into an
+		 * outage the moment several people share one source address — which is the normal case
+		 * behind a reverse proxy, on carrier NAT, or in an office.
+		 */
+		const budget = this.limiter.peek(clientIp);
+		if (!budget.allowed) throw new RateLimitError(budget.retryAfterSec);
 
-		const { profile } = this.validator.validate(rawInitData);
-		const user = this.users.upsertFromTelegram(profile);
+		let user: UserRow;
+		try {
+			const { profile } = this.validator.validate(rawInitData);
+			user = this.users.upsertFromTelegram(profile);
+		} catch (err) {
+			// A dead database is our failure, not the caller's, and must not spend their budget.
+			if (err instanceof AppError) this.limiter.consume(clientIp);
+			throw err;
+		}
 
 		// The upsert still runs for a blocked account — their name and photo stay current for the
 		// admin screens — but no cookie is issued, so nothing downstream sees them as signed in.
 		if (user.isBlocked) {
+			this.limiter.consume(clientIp);
 			throw new AuthError('blocked', 'Доступ к приложению закрыт. Напишите в поддержку.');
 		}
 
