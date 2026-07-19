@@ -1,10 +1,12 @@
 <script lang="ts">
 	import { getContext } from 'svelte';
+	import { ChevronRight, SlidersHorizontal } from 'lucide-svelte';
 	import { goto } from '$app/navigation';
 	import { resolve } from '$app/paths';
 	import { haptic } from '$lib/client/telegram-haptics';
 	import { TELEGRAM_SESSION_KEY, type TelegramSession } from '$lib/client/telegram.svelte';
 	import Button from '$lib/ui/Button.svelte';
+	import Card from '$lib/ui/Card.svelte';
 	import EmptyState from '$lib/ui/EmptyState.svelte';
 	import Avatar from './Avatar.svelte';
 
@@ -54,6 +56,29 @@
 				<Button size="sm" class="w-full" onclick={choosePlan}>Выбрать тариф</Button>
 			{/snippet}
 		</EmptyState>
+
+		{#if session.isAdmin}
+			<!--
+				The entrance is hidden from everyone else, and that is all it is: the guard in
+				hooks.server.ts and the isAdmin check inside every admin action are what actually
+				refuse the request (tech.md 9).
+			-->
+			<h2 class="mt-7 mb-2 px-1 text-[12px] font-semibold tracking-[.06em] text-muted uppercase">
+				Управление
+			</h2>
+
+			<Card padded={false}>
+				<a
+					href={resolve('/profile/admin')}
+					data-sveltekit-preload-data="tap"
+					class="flex items-center gap-3 p-4 press"
+				>
+					<SlidersHorizontal class="size-5 shrink-0 text-accent-600" aria-hidden="true" />
+					<span class="min-w-0 flex-1 text-[15px] font-medium">Админка</span>
+					<ChevronRight class="size-4 shrink-0 text-muted" aria-hidden="true" />
+				</a>
+			</Card>
+		{/if}
 	{:else}
 		<div class="mt-5">
 			<EmptyState

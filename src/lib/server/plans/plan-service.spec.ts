@@ -46,7 +46,7 @@ beforeEach(() => {
 		const sql = statement.trim();
 		if (sql) db.run(sql as never);
 	}
-	service = new PlanService(db);
+	service = new PlanService(db, 'usd', { now: () => NOW.getTime() });
 });
 
 describe('PlanService.listActive', () => {

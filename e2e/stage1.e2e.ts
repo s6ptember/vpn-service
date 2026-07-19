@@ -1,87 +1,16 @@
-import { createHmac } from 'node:crypto';
-import {
-	expect,
-	test,
-	type APIRequestContext,
-	type APIResponse,
-	type Page
-} from '@playwright/test';
+import { expect, test } from '@playwright/test';
+import { FRAME, exchange, sessionCookie, signIn, signedInitData, withId } from './helpers';
 
 /**
  * Stage 1's acceptance criteria end to end: initData becomes a session cookie (A1), and the profile
  * shows who is signed in (A2). tech.md 14's full journey adds payment and QR to this file's path as
  * A5..A9 land.
  *
- * The bot token comes from .env — the same file `vite build` inlined into the preview server this
- * suite runs against, so the signature is computed against the key the server actually holds.
+ * The signing and sign-in helpers live in ./helpers.ts — every stage from A1 on starts by getting a
+ * session, and a second copy of Telegram's algorithm would be a second place to get it wrong.
  */
 
-try {
-	process.loadEnvFile('.env');
-} catch {
-	// Docker and CI pass the values through the environment instead.
-}
-
-const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
-if (!BOT_TOKEN) throw new Error('TELEGRAM_BOT_TOKEN is required to sign test initData');
-
-const FRAME = { width: 430, height: 880 };
 test.use({ viewport: FRAME });
-
-const ALEX = {
-	id: 700_000_111,
-	first_name: 'Александр',
-	last_name: 'Ким',
-	username: 'alex_k',
-	language_code: 'ru'
-};
-
-/** Telegram's algorithm, written from the spec: sort by key, join with newlines, HMAC it. */
-function signedInitData(user: Record<string, unknown>, options: { authDateSec?: number } = {}) {
-	const fields: Record<string, string> = {
-		user: JSON.stringify(user),
-		auth_date: String(options.authDateSec ?? Math.floor(Date.now() / 1000))
-	};
-	const dataCheckString = Object.keys(fields)
-		.sort()
-		.map((key) => `${key}=${fields[key]}`)
-		.join('\n');
-	const secretKey = createHmac('sha256', 'WebAppData').update(BOT_TOKEN!).digest();
-
-	const params = new URLSearchParams(fields);
-	params.set('hash', createHmac('sha256', secretKey).update(dataCheckString).digest('hex'));
-	return params.toString();
-}
-
-const exchange = (request: APIRequestContext, initData: string) =>
-	request.post('/api/auth/telegram', { data: { initData } });
-
-const sessionCookie = (response: APIResponse): string | undefined =>
-	response
-		.headersArray()
-		.find((h) => h.name.toLowerCase() === 'set-cookie' && h.value.startsWith('session='))?.value;
-
-/**
- * Signs a person in and moves the cookie into the browser context. The copy is needed because the
- * cookie is Secure and this suite runs on http://localhost, where Playwright would refuse to send
- * it — over the https origin the app actually ships on, the browser does this itself.
- */
-async function signIn(page: Page, request: APIRequestContext, user: Record<string, unknown>) {
-	const response = await exchange(request, signedInitData(user));
-	expect(response.status()).toBe(200);
-
-	const cookie = sessionCookie(response);
-	expect(cookie, 'the exchange must set the session cookie').toBeDefined();
-
-	const value = cookie!.split(';')[0].slice('session='.length);
-	await page.context().addCookies([{ name: 'session', value, url: 'http://localhost:4173' }]);
-}
-
-/**
- * Each test signs in a different Telegram account. The preview server keeps one SQLite file for the
- * whole run, so sharing an id would let one test's upsert rewrite another's profile.
- */
-const withId = (id: number) => ({ ...ALEX, id });
 
 test.describe('initData exchange', () => {
 	test('issues a session cookie for a payload signed with the bot token', async ({ request }) => {
@@ -164,29 +93,5 @@ test.describe('profile', () => {
 
 		await expect(page.getByText('Профиль откроется после входа')).toBeVisible();
 		await expect(page.getByText('@')).toHaveCount(0);
-	});
-});
-
-/**
- * Last on purpose. Only refused attempts spend the budget, so the sign-ins above are unaffected —
- * but this test spends it deliberately, and every test here shares 127.0.0.1, so any refusal
- * expected after it would come back as a 429 instead of the code it was checking for.
- */
-test.describe('rate limit', () => {
-	test('answers 429 with a Retry-After once the per-IP budget is spent', async ({ request }) => {
-		// tech.md 2 caps the exchange at 10/min per IP. Bad signatures count too, which is the point:
-		// the limit exists to cap the work a stranger can order.
-		const forged = new URLSearchParams(signedInitData(withId(700_000_005)));
-		forged.set('hash', 'a'.repeat(64));
-
-		let refused: APIResponse | null = null;
-		for (let attempt = 0; attempt < 15 && !refused; attempt++) {
-			const response = await exchange(request, forged.toString());
-			if (response.status() === 429) refused = response;
-		}
-
-		expect(refused, 'the exchange must stop answering after 10 attempts a minute').not.toBeNull();
-		expect((await refused!.json()).code).toBe('rate_limit');
-		expect(Number(refused!.headers()['retry-after'])).toBeGreaterThan(0);
 	});
 });

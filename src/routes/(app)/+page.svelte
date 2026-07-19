@@ -1,9 +1,12 @@
 <script lang="ts">
 	import EmptyState from '$lib/ui/EmptyState.svelte';
 	import PlanCard from './PlanCard.svelte';
+	import { bestValuePlanId } from './plan-value';
 	import type { PageProps } from './$types';
 
 	let { data }: PageProps = $props();
+
+	let bestId = $derived(bestValuePlanId(data.plans));
 </script>
 
 <svelte:head>
@@ -23,7 +26,7 @@
 	{:else}
 		<div class="mt-4 space-y-3">
 			{#each data.plans as plan (plan.id)}
-				<PlanCard {plan} />
+				<PlanCard {plan} best={plan.id === bestId} />
 			{/each}
 		</div>
 
