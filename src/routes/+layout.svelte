@@ -21,9 +21,10 @@
 	let section = $derived(sectionOfPath(page.url.pathname));
 	let activeIndex = $derived(indexOfPath(page.url.pathname));
 
-	// The Telegram WebApp API is the world outside Svelte, which is what $effect is for.
+	// The Telegram WebApp API is the world outside Svelte, which is what $effect is for. `void`:
+	// an effect must return a cleanup function or nothing, never a promise.
 	$effect(() => {
-		session.init();
+		void session.init();
 	});
 
 	function navigate(next: number) {
