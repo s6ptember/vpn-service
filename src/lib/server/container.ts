@@ -22,7 +22,7 @@ import { JobWorker } from './jobs/worker';
 import { log } from './log';
 import { PlanInputParser, PlanService } from './plans';
 import { RateLimiter } from './rate-limit';
-import { SubscriptionService } from './subscriptions';
+import { SubscriptionReader, SubscriptionService } from './subscriptions';
 
 /**
  * Composition root: the ONE place that picks an implementation. Nothing below imports a sibling
@@ -115,6 +115,9 @@ export const paymentWebhooks = new PaymentWebhookService(db, orders, jobs, log, 
 });
 
 export const subscriptions = new SubscriptionService(db);
+
+/** Read model for the pages: one person's access, assembled from three domains (A7, A9). */
+export const access = new SubscriptionReader(subscriptions, orders, plans);
 
 const worker = new JobWorker(
 	jobs,

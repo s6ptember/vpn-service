@@ -5,3 +5,8 @@ export {
 	type UpsertSubscriptionInput
 } from './subscription-service';
 export { toSubscriptionDTO } from './mapper';
+export {
+	SubscriptionReader,
+	type AccessView,
+	type SubscriptionReaderOptions
+} from './subscription-reader';
