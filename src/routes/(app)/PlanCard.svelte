@@ -21,6 +21,8 @@
 		busy?: boolean;
 		/** Another card's checkout is in flight, or the app is waiting on a payment. */
 		locked?: boolean;
+		/** The code typed above the deck, submitted with whichever card is bought (tech.md 10, step 1). */
+		promoCode?: string;
 	}
 
 	let {
@@ -29,7 +31,8 @@
 		subscription = null,
 		onsubmit,
 		busy = false,
-		locked = false
+		locked = false,
+		promoCode = ''
 	}: Props = $props();
 
 	let perDay = $derived(perDayMinor(plan));
@@ -99,11 +102,16 @@
 
 	<!--
 		A form action, not a fetch wrapper (CLAUDE.md 1.5): CSRF by Origin and a working no-JS submit
-		come for free. The only field is the plan id — the price is the server's business, and there
-		is nowhere here to name one.
+		come for free. Two fields, and neither is money: the plan id, and the name of a promo code.
+		What either is worth is read from the database — there is nowhere here to name a price.
+
+		The code is mirrored into every card rather than shared by one field, because each card is its
+		own form: `promoCode` is bound to the deck's single input, so whichever card is tapped carries
+		whatever is currently typed.
 	-->
 	<form method="POST" action="?/createCheckout" use:enhance={onsubmit} class="mt-3.5">
 		<input type="hidden" name="planId" value={plan.id} />
+		<input type="hidden" name="promoCode" value={promoCode} />
 		<Button
 			type="submit"
 			class="w-full"
