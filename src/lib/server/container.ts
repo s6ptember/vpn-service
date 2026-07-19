@@ -3,17 +3,26 @@ import { InitDataValidator } from './auth/init-data';
 import { SessionService } from './auth/session';
 import { TelegramAuthService } from './auth/telegram-auth';
 import { UserService } from './auth/user-service';
+import {
+	CheckoutInputParser,
+	CheckoutService,
+	OrderService,
+	PaymentWebhookService,
+	PriceCalculator
+} from './billing';
 import { FakeMarzban, MarzbanHttp, type MarzbanApi } from './clients/marzban';
 import { FakePayments, StripePayments, type PaymentProvider } from './clients/payments';
 import { FakeTelegram, TelegramHttp, type TelegramApi } from './clients/telegram';
 import { config } from './config';
 import { db } from './db';
+import { SubscriptionProvisionHandler } from './jobs/handlers/subscription-provision';
 import { TelegramSendMessageHandler } from './jobs/handlers/telegram-send-message';
 import { JobQueue } from './jobs/queue';
 import { JobWorker } from './jobs/worker';
 import { log } from './log';
 import { PlanInputParser, PlanService } from './plans';
 import { RateLimiter } from './rate-limit';
+import { SubscriptionReader, SubscriptionService } from './subscriptions';
 
 /**
  * Composition root: the ONE place that picks an implementation. Nothing below imports a sibling
@@ -91,9 +100,35 @@ export const planInput = new PlanInputParser(config.PRICE_CURRENCY);
 
 export const jobs = new JobQueue(db);
 
-const worker = new JobWorker(jobs, [new TelegramSendMessageHandler(telegram, log)], log, {
+export const orders = new OrderService(db);
+
+export const checkout = new CheckoutService(orders, plans, new PriceCalculator(), payments, log);
+
+export const checkoutInput = new CheckoutInputParser();
+
+/**
+ * The provider id is recorded on every dedupe row, so a database can always be read back knowing
+ * which implementation signed what it holds.
+ */
+export const paymentWebhooks = new PaymentWebhookService(db, orders, jobs, log, {
+	provider: payments.id,
 	adminChatId: config.ADMIN_CHAT_ID
 });
+
+export const subscriptions = new SubscriptionService(db);
+
+/** Read model for the pages: one person's access, assembled from three domains (A7, A9). */
+export const access = new SubscriptionReader(subscriptions, orders, plans);
+
+const worker = new JobWorker(
+	jobs,
+	[
+		new TelegramSendMessageHandler(telegram, log),
+		new SubscriptionProvisionHandler(orders, subscriptions, users, marzban, jobs, log)
+	],
+	log,
+	{ adminChatId: config.ADMIN_CHAT_ID }
+);
 
 /**
  * One process, one worker (tech.md 3: exactly one replica, SQLite plus an in-process worker).

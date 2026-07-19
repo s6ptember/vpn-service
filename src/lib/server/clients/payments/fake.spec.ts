@@ -108,6 +108,33 @@ describe('FakePayments', () => {
 		);
 	});
 
+	it('refuses a paid event for an order nobody ever checked out', () => {
+		// The fake secret is a constant in this repository, so the signature proves nothing. What
+		// stands in for Stripe's guarantee is that the event has to match a checkout we opened.
+		const forged = JSON.stringify({
+			kind: 'paid',
+			eventId: 'evt_forged',
+			orderPublicId: 'ord_9aBcD',
+			sessionId: 'cs_fake_ord_9aBcD',
+			paymentIntentId: 'pi_forged',
+			amountMinor: 800,
+			currency: 'usd'
+		});
+
+		expect(() => payments.parseWebhook(forged, FAKE_WEBHOOK_SECRET)).toThrow(PaymentProviderError);
+	});
+
+	it('refuses a paid event that contradicts the checkout it names', async () => {
+		await payments.createCheckout(makeOrder(), PLAN_SNAPSHOT, makeUser());
+		const event = { ...payments.simulatePaid('ord_9aBcD'), amountMinor: 1 };
+
+		// Paying a cent for an 800-cent order is what the amount check upstream exists to catch;
+		// the fake refuses to even hand such an event over.
+		expect(() => payments.parseWebhook(JSON.stringify(event), FAKE_WEBHOOK_SECRET)).toThrow(
+			PaymentProviderError
+		);
+	});
+
 	it('forgets everything on reset', async () => {
 		await payments.createCheckout(makeOrder(), PLAN_SNAPSHOT, makeUser());
 

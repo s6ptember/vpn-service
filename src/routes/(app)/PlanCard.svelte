@@ -1,19 +1,49 @@
 <script lang="ts">
 	import { Check } from 'lucide-svelte';
+	import { enhance } from '$app/forms';
+	import type { SubmitFunction } from '@sveltejs/kit';
 	import Badge from '$lib/ui/Badge.svelte';
+	import Button from '$lib/ui/Button.svelte';
 	import Money from '$lib/ui/Money.svelte';
-	import type { PlanDTO } from '$lib/types';
+	import type { PlanDTO, SubscriptionDTO } from '$lib/types';
+	import { formatDateShort } from './dates';
 	import { formatDays, formatTraffic, perDayMinor } from './plan-value';
 
 	interface Props {
 		plan: PlanDTO;
 		/** Lowest daily rate in the deck. Derived by the page, never stored (see plan-value.ts). */
 		best?: boolean;
+		/** Live access, if any. Turns the price into an extension rather than a start. */
+		subscription?: SubscriptionDTO | null;
+		/** Opens the payment page. The page owns it, because the answer changes the page. */
+		onsubmit: SubmitFunction;
+		/** This card's checkout is in flight. Only one can be. */
+		busy?: boolean;
+		/** Another card's checkout is in flight, or the app is waiting on a payment. */
+		locked?: boolean;
 	}
 
-	let { plan, best = false }: Props = $props();
+	let {
+		plan,
+		best = false,
+		subscription = null,
+		onsubmit,
+		busy = false,
+		locked = false
+	}: Props = $props();
 
 	let perDay = $derived(perDayMinor(plan));
+
+	/**
+	 * tech.md 11: while a subscription is active, a card says what buying it would extend access to.
+	 * The arithmetic mirrors the server's (subscriptions/expiry.ts) — days are added to the end of
+	 * live access, never to today — so the promise on the card is the date the job will write.
+	 */
+	let extendsUntil = $derived(
+		subscription && subscription.status === 'active'
+			? subscription.expiresAt + plan.durationDays * 86_400_000
+			: null
+	);
 
 	/**
 	 * tech.md 11 puts the срок on the card, and `name` is free text: a plan called «Стартовый» would
@@ -61,10 +91,27 @@
 		{/each}
 	</ul>
 
+	{#if extendsUntil}
+		<p class="mt-3.5 text-[13px] text-muted">
+			Продлит доступ до {formatDateShort(extendsUntil, Date.now())}
+		</p>
+	{/if}
+
 	<!--
-		The mock ends the card with a Купить button. This slice still sells nothing, so it is omitted
-		rather than rendered disabled: a permanently dimmed CTA reads as broken and names an action
-		nobody can take. A5 adds it back with the ?/createCheckout action behind it, and A8 adds the
-		"продлит до <дата>" line — a subscription cannot exist before that job writes one.
+		A form action, not a fetch wrapper (CLAUDE.md 1.5): CSRF by Origin and a working no-JS submit
+		come for free. The only field is the plan id — the price is the server's business, and there
+		is nowhere here to name one.
 	-->
+	<form method="POST" action="?/createCheckout" use:enhance={onsubmit} class="mt-3.5">
+		<input type="hidden" name="planId" value={plan.id} />
+		<Button
+			type="submit"
+			class="w-full"
+			loading={busy}
+			disabled={locked && !busy}
+			aria-label={`Купить тариф ${plan.name}`}
+		>
+			{subscription?.status === 'active' ? 'Продлить' : 'Купить'}
+		</Button>
+	</form>
 </article>

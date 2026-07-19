@@ -1,14 +1,19 @@
 <script lang="ts">
-	import { getContext } from 'svelte';
-	import { ChevronRight, SlidersHorizontal } from 'lucide-svelte';
+	import { getContext, untrack } from 'svelte';
+	import { ChevronRight, LoaderCircle, SlidersHorizontal } from 'lucide-svelte';
 	import { goto } from '$app/navigation';
 	import { resolve } from '$app/paths';
+	import { checkoutWatcher } from '$lib/client/checkout.svelte';
 	import { haptic } from '$lib/client/telegram-haptics';
 	import { TELEGRAM_SESSION_KEY, type TelegramSession } from '$lib/client/telegram.svelte';
 	import Button from '$lib/ui/Button.svelte';
 	import Card from '$lib/ui/Card.svelte';
 	import EmptyState from '$lib/ui/EmptyState.svelte';
 	import Avatar from './Avatar.svelte';
+	import SubscriptionCard from './SubscriptionCard.svelte';
+	import type { PageProps } from './$types';
+
+	let { data }: PageProps = $props();
 
 	const session = getContext<TelegramSession>(TELEGRAM_SESSION_KEY);
 
@@ -20,6 +25,36 @@
 	// to them alone, and it beats an empty line under their name.
 	let handle = $derived(user && (user.username ? `@${user.username}` : `ID ${user.telegramId}`));
 
+	/**
+	 * The watcher is shared with Главная, so a payment started there keeps polling while its person
+	 * reads this screen — and its poll is what re-runs this load (both depend on 'app:subscription').
+	 */
+	$effect(() =>
+		checkoutWatcher.attach(() => ({
+			subscription: data.subscription,
+			latestOrder: data.latestOrder,
+			awaitingKey: data.awaitingKey
+		}))
+	);
+
+	/**
+	 * Somebody can also arrive here with the key still being made and no wait running: Telegram
+	 * relaunched the app, or they were on Профиль when the money landed. Without this the spinner
+	 * below would turn forever — nothing else on this route ever asks the server again, and a mini
+	 * app offers no obvious reload gesture.
+	 *
+	 * untrack keeps the effect from subscribing to `data` through the watcher's own phase, which
+	 * would restart the minute on every poll.
+	 */
+	$effect(() => {
+		if (!data.awaitingKey) return;
+		untrack(() => {
+			if (checkoutWatcher.phase === 'idle') checkoutWatcher.start();
+		});
+	});
+
+	let waitingPhase = $derived(checkoutWatcher.phase);
+
 	function choosePlan() {
 		haptic();
 		goto(resolve('/'));
@@ -30,8 +65,7 @@
 	<title>Профиль — VPN</title>
 </svelte:head>
 
-<!-- A9 fills the subscription card in with the real plan, QR and link; A10 adds the promo block,
-     A12 the purchase history. -->
+<!-- A10 adds the promo block, A12 the purchase history. -->
 <div class="px-4 pt-[max(16px,env(safe-area-inset-top))] pb-28">
 	<h1 class="text-[28px] font-bold tracking-[-.02em]">Профиль</h1>
 
@@ -48,14 +82,45 @@
 			Подписка
 		</h2>
 
-		<EmptyState
-			title="Подписки нет"
-			description="Выберите тариф — ключ придёт сюда сразу после оплаты."
-		>
-			{#snippet action()}
-				<Button size="sm" class="w-full" onclick={choosePlan}>Выбрать тариф</Button>
-			{/snippet}
-		</EmptyState>
+		{#if data.subscription}
+			<SubscriptionCard subscription={data.subscription} />
+		{:else if data.awaitingKey}
+			<!--
+				Paid, and the provision job has not finished. The empty state below must never appear
+				here: inviting somebody to buy the thing they just bought is the worst sentence this
+				screen could say.
+			-->
+			<Card>
+				<div class="flex items-start gap-3">
+					{#if waitingPhase !== 'timeout'}
+						<span class="spinner mt-0.5 block shrink-0 animate-spin text-accent-600">
+							<LoaderCircle size={18} aria-hidden="true" />
+						</span>
+					{/if}
+					<div class="min-w-0" role="status" aria-live="polite">
+						<p class="text-[16px] font-semibold">Оплата прошла</p>
+						<p class="mt-1 text-[14px] text-muted">
+							{#if waitingPhase === 'timeout'}
+								<!-- The provision job retries with a backoff that can outlast our minute. A
+								     spinner still turning after that would promise something we cannot time. -->
+								Ключ готовится дольше обычного. Пришлём его вам в Telegram, как только он будет готов.
+							{:else}
+								Готовим ключ. Он появится здесь и придёт вам в Telegram.
+							{/if}
+						</p>
+					</div>
+				</div>
+			</Card>
+		{:else}
+			<EmptyState
+				title="Подписки нет"
+				description="Выберите тариф — ключ придёт сюда сразу после оплаты."
+			>
+				{#snippet action()}
+					<Button size="sm" class="w-full" onclick={choosePlan}>Выбрать тариф</Button>
+				{/snippet}
+			</EmptyState>
+		{/if}
 
 		{#if session.isAdmin}
 			<!--
@@ -88,3 +153,11 @@
 		</div>
 	{/if}
 </div>
+
+<style>
+	@media (prefers-reduced-motion: reduce) {
+		.spinner {
+			animation-duration: 1.6s;
+		}
+	}
+</style>

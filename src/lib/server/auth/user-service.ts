@@ -1,3 +1,4 @@
+import { eq } from 'drizzle-orm';
 import type { Db } from '../db/client';
 import { users, type UserRow } from '../db/schema';
 import type { TelegramProfile } from './init-data';
@@ -55,5 +56,14 @@ export class UserService {
 			})
 			.returning()
 			.get();
+	}
+
+	/**
+	 * The full row, for the server side that needs more than SessionUser carries — the checkout
+	 * needs `stripeCustomerId`, the provision job needs `telegramId` to name the Marzban user and to
+	 * address the message. Rows stay inside lib/server; a load hands out DTOs (CLAUDE.md 1.4).
+	 */
+	findById(id: number): UserRow | null {
+		return this.db.select().from(users).where(eq(users.id, id)).get() ?? null;
 	}
 }
