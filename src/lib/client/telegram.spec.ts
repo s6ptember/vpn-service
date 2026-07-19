@@ -157,8 +157,18 @@ describe('TelegramSession.init', () => {
 		await new TelegramSession(() => ALEX).init();
 
 		expect(fetchMock).toHaveBeenCalledTimes(1);
-		// …but the loads already carry that user, so nothing needs re-running.
-		expect(invalidateAll).not.toHaveBeenCalled();
+	});
+
+	it('re-reads the loads after a successful exchange even for a signed-in visitor', async () => {
+		// The refreshed row is worth nothing if the screen keeps rendering what SSR read before it.
+		// Worse than a stale @username: switching Telegram accounts re-issues the cookie for B while
+		// the page still shows A, so the visible identity and the acting one disagree.
+		install(fakeWebApp());
+		respondWith(200);
+
+		await new TelegramSession(() => ALEX).init();
+
+		expect(invalidateAll).toHaveBeenCalledTimes(1);
 	});
 
 	it('does not nag a signed-in visitor about a failed refresh', async () => {

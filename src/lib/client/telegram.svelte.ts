@@ -73,8 +73,8 @@ export class TelegramSession {
 	async #exchange(rawInitData: string): Promise<void> {
 		if (!rawInitData) return;
 
-		// Captured before the round trip: only a session that appears out of nothing needs the
-		// loads re-run. Re-running them on every start would fetch the same page data twice.
+		// Captured before the round trip: it decides whether a failure is worth reporting, not
+		// whether the loads re-run.
 		const wasSignedOut = this.user === null;
 
 		let response: Response;
@@ -101,7 +101,14 @@ export class TelegramSession {
 			return;
 		}
 
-		if (wasSignedOut) await invalidateAll();
+		/**
+		 * Unconditional, and worth the extra load (tech.md 9, step 6). The exchange has just rewritten
+		 * the row and re-issued the cookie, and `user` is a getter over the layout's load — so without
+		 * this the screen keeps whatever SSR read before the exchange. That is a stale @username at
+		 * best, and at worst the wrong person: switch Telegram accounts on Desktop and the page would
+		 * go on showing A's name and avatar while the cookie now signs every request as B.
+		 */
+		await invalidateAll();
 	}
 }
 
