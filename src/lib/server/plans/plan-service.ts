@@ -61,6 +61,24 @@ export class PlanService {
 		return row ? toPlanDTO(row) : null;
 	}
 
+	/**
+	 * The plan a checkout may actually charge for: exactly what listActive shows, looked up by id.
+	 *
+	 * findById deliberately does not do: it answers for archived and hidden plans too, because the
+	 * admin screens need them. Selling from that answer would let a stale card — or a hand-posted
+	 * planId — buy a plan that was retired an hour ago. The rule lives here, once, so the checkout
+	 * cannot forget half of it.
+	 */
+	findSellable(id: number): PlanDTO | null {
+		const row = this.db
+			.select()
+			.from(plans)
+			.where(and(eq(plans.id, id), eq(plans.isActive, true), isNull(plans.archivedAt)))
+			.get();
+
+		return row ? toPlanDTO(row) : null;
+	}
+
 	create(input: PlanInput): PlanDTO {
 		const timestamp = new Date(this.now());
 
