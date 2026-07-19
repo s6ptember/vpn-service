@@ -85,9 +85,14 @@ export class TelegramSession {
 				body: JSON.stringify({ initData: rawInitData })
 			});
 		} catch {
-			// Offline or the app is unreachable. An existing cookie still works, so say what is
-			// wrong rather than tearing the session down.
-			toasts.push('Нет связи с сервером. Проверьте интернет и откройте приложение заново.', 'danger');
+			// Offline, or the app is unreachable. An existing cookie still works, so the session is
+			// left standing either way; only somebody stuck outside is told why.
+			if (wasSignedOut) {
+				toasts.push(
+					'Нет связи с сервером. Проверьте интернет и откройте приложение заново.',
+					'danger'
+				);
+			}
 			return;
 		}
 

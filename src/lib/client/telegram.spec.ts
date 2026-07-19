@@ -129,6 +129,23 @@ describe('TelegramSession.init', () => {
 
 		expect(session.ready).toBe(true);
 		expect(session.user).toBe(ALEX);
+		// Their cookie still works, so there is nothing for them to act on.
+		expect(toasts.items).toEqual([]);
+	});
+
+	it('tells somebody stuck outside that the server is unreachable', async () => {
+		install(fakeWebApp());
+		vi.stubGlobal(
+			'fetch',
+			vi.fn(async () => {
+				throw new TypeError('Failed to fetch');
+			})
+		);
+
+		await new TelegramSession(() => null).init();
+
+		expect(toasts.items).toHaveLength(1);
+		expect(toasts.items[0].tone).toBe('danger');
 	});
 
 	it('still refreshes the stored profile when a session already exists', async () => {
