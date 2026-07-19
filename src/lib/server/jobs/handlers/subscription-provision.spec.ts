@@ -1,12 +1,14 @@
 import { eq } from 'drizzle-orm';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { UserService } from '$lib/server/auth/user-service';
-import { OrderService, PriceCalculator } from '$lib/server/billing';
-import { addPlan, addUser } from '$lib/server/billing/fixtures';
+import { OrderService, PriceCalculator, PromoService, PromoValidator } from '$lib/server/billing';
+import { addPlan, addPromo, addUser } from '$lib/server/billing/fixtures';
 import { FAKE_SUB_ORIGIN, FakeMarzban } from '$lib/server/clients/marzban';
 import type { Db } from '$lib/server/db/client';
 import {
 	jobs as jobsTable,
+	promoCodes,
+	promoRedemptions,
 	subscriptions as subscriptionsTable,
 	type PlanRow,
 	type UserRow
@@ -28,9 +30,12 @@ import { SubscriptionProvisionHandler } from './subscription-provision';
  * every deploy that landed mid-job.
  */
 
+const ADMIN_CHAT_ID = 900_000_001;
+
 let db: Db;
 let clock: TestClock;
 let orders: OrderService;
+let promos: PromoService;
 let subscriptions: SubscriptionService;
 let marzban: FakeMarzban;
 let queue: JobQueue;
@@ -39,7 +44,7 @@ let user: UserRow;
 let plan: PlanRow;
 
 /** Opens an order and settles it, which is the state the webhook leaves behind. */
-function payFor(durationDays: number, paidAt = clock.now()) {
+function payFor(durationDays: number, paidAt = clock.now(), promoCodeId: number | null = null) {
 	const snapshot = {
 		name: `${durationDays} дней`,
 		durationDays,
@@ -53,7 +58,8 @@ function payFor(durationDays: number, paidAt = clock.now()) {
 		planId: plan.id,
 		plan: snapshot,
 		quote: new PriceCalculator().quote(snapshot, null),
-		provider: 'fake'
+		provider: 'fake',
+		promoCodeId
 	});
 
 	// paidAt is what the fold anchors on, so the specs set it explicitly rather than leaning on
@@ -79,6 +85,7 @@ beforeEach(() => {
 	db = createTestDb();
 	clock = new TestClock();
 	orders = new OrderService(db, { now: clock.now });
+	promos = new PromoService(db, new PromoValidator(), orders, { now: clock.now });
 	subscriptions = new SubscriptionService(db, { now: clock.now });
 	marzban = new FakeMarzban();
 	queue = new JobQueue(db, clock.now);
@@ -86,15 +93,18 @@ beforeEach(() => {
 		orders,
 		subscriptions,
 		new UserService(db, { now: clock.now }),
+		promos,
 		marzban,
 		queue,
 		silentLogger(),
-		{ now: clock.now }
+		{ now: clock.now, adminChatId: ADMIN_CHAT_ID }
 	);
 
 	user = addUser(db);
 	plan = addPlan(db);
 });
+
+const promoRow = (id: number) => db.select().from(promoCodes).where(eq(promoCodes.id, id)).get()!;
 
 describe('SubscriptionProvisionHandler', () => {
 	it('creates the panel user and the subscription row from a paid order', async () => {
@@ -256,10 +266,11 @@ describe('SubscriptionProvisionHandler', () => {
 			orders,
 			subscriptions,
 			new UserService(db, { now: clock.now }),
+			promos,
 			racing,
 			queue,
 			silentLogger(),
-			{ now: clock.now }
+			{ now: clock.now, adminChatId: ADMIN_CHAT_ID }
 		);
 
 		const order = payFor(30);
@@ -286,6 +297,29 @@ describe('SubscriptionProvisionHandler', () => {
 		expect(subscriptionRow()).not.toBeNull();
 	});
 
+	it('does not eat the promo code while the panel is down', async () => {
+		/**
+		 * Why the redemption runs after the panel call rather than before it. A Marzban outage retries
+		 * this job with a backoff up to an hour; a redemption written on the way in would spend a use
+		 * of the code on every attempt — and on a `maxUses` code, hand the buyer an overspend alert
+		 * for access they never received.
+		 */
+		const promo = addPromo(db);
+		const order = payFor(30, clock.now(), promo.id);
+		marzban.failNext(500);
+
+		await expect(handler.handle({ orderId: order.id })).rejects.toBeInstanceOf(MarzbanError);
+
+		expect(db.select().from(promoRedemptions).all()).toEqual([]);
+		expect(promoRow(promo.id).usedCount).toBe(0);
+
+		// The retry grants access and spends the code exactly once.
+		await handler.handle({ orderId: order.id });
+
+		expect(db.select().from(promoRedemptions).all()).toHaveLength(1);
+		expect(promoRow(promo.id).usedCount).toBe(1);
+	});
+
 	it('refuses to provision an order nobody paid for', async () => {
 		const snapshot = {
 			name: '30 дней',
@@ -306,6 +340,49 @@ describe('SubscriptionProvisionHandler', () => {
 		// only come from a hand-written job — and it must not buy anybody a free subscription.
 		await expect(handler.handle({ orderId: unpaid.id })).rejects.toThrow(/not paid/);
 		expect(subscriptionRow()).toBeNull();
+	});
+
+	it('spends the promo code exactly once, however often the job runs', async () => {
+		/**
+		 * tech.md 6 makes redeeming an effect of THIS job, and tech.md 6 also says two runs of a
+		 * handler leave one effect. Both at once: a retry after a Marzban timeout must not burn a
+		 * second use of the code.
+		 */
+		const promo = addPromo(db);
+		const order = payFor(30, clock.now(), promo.id);
+
+		await handler.handle({ orderId: order.id });
+		await handler.handle({ orderId: order.id });
+
+		expect(db.select().from(promoRedemptions).all()).toHaveLength(1);
+		expect(promoRow(promo.id).usedCount).toBe(1);
+	});
+
+	it('grants access and tells the admin when the code ran out before the payment landed', async () => {
+		/**
+		 * Somebody else took the last use while this person was on the payment page. The money is
+		 * already taken, so refusing the subscription over a discount the shop itself quoted would be
+		 * the worse failure — access goes out, the counter stays honest, and the admin hears about it.
+		 */
+		const promo = addPromo(db, { maxUses: 1, usedCount: 1 });
+		const order = payFor(30, clock.now(), promo.id);
+
+		await handler.handle({ orderId: order.id });
+
+		expect(subscriptionRow()).not.toBeNull();
+		expect(db.select().from(promoRedemptions).all()).toEqual([]);
+		expect(promoRow(promo.id).usedCount).toBe(1);
+		expect(messages().some((job) => job.idempotencyKey === `tg:promo:overspent:${order.id}`)).toBe(
+			true
+		);
+	});
+
+	it('leaves the promo tables alone for an order that carried no code', async () => {
+		const order = payFor(30);
+
+		await handler.handle({ orderId: order.id });
+
+		expect(db.select().from(promoRedemptions).all()).toEqual([]);
 	});
 
 	it('refuses an order that is gone', async () => {

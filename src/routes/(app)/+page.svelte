@@ -1,11 +1,13 @@
 <script lang="ts">
 	import { untrack } from 'svelte';
+	import { ChevronDown } from 'lucide-svelte';
 	import type { SubmitFunction } from '@sveltejs/kit';
 	import { checkoutWatcher, consumeCheckoutReturn } from '$lib/client/checkout.svelte';
 	import { openExternal } from '$lib/client/open-link';
 	import { haptic } from '$lib/client/telegram-haptics';
 	import { webApp } from '$lib/client/telegram-webapp';
 	import EmptyState from '$lib/ui/EmptyState.svelte';
+	import Input from '$lib/ui/Input.svelte';
 	import { toasts } from '$lib/ui/toasts.svelte';
 	import CheckoutStatus from './CheckoutStatus.svelte';
 	import PlanCard from './PlanCard.svelte';
@@ -21,6 +23,9 @@
 
 	/** A failed checkout leaves a message on `form`; it must not sit under the next attempt's banner. */
 	let errorDismissed = $state(false);
+
+	/** tech.md 10, step 1: optional, and posted with whichever plan is bought. */
+	let promoCode = $state('');
 
 	const watcher = checkoutWatcher;
 
@@ -120,6 +125,36 @@
 			/>
 		</div>
 	{:else}
+		<!--
+			tech.md 10, step 1: the plan and the code go up together, in one submit. Folded away by
+			default — most purchases have no code, and an empty field over the deck invites everyone to
+			hunt for one they were never given.
+		-->
+		<details class="group mt-4">
+			<summary class="flex cursor-pointer list-none items-center gap-1.5 px-1 text-[14px] press">
+				У меня есть промокод
+				<ChevronDown
+					class="size-4 text-muted transition-transform group-open:rotate-180 motion-reduce:transition-none"
+					aria-hidden="true"
+				/>
+			</summary>
+
+			<div class="mt-2.5">
+				<Input
+					bind:value={promoCode}
+					aria-label="Промокод"
+					placeholder="Промокод"
+					maxlength={32}
+					uppercase
+				/>
+				<p class="mt-2 px-1 text-[13px] text-muted">
+					<!-- Honest about where the number appears: the discount is applied when the order is
+					     priced, and the amount charged is on the payment page. -->
+					Скидка применится к выбранному тарифу на странице оплаты.
+				</p>
+			</div>
+		</details>
+
 		<div class="mt-4 space-y-3">
 			{#each data.plans as plan (plan.id)}
 				<PlanCard
@@ -129,6 +164,7 @@
 					onsubmit={startCheckout}
 					busy={submittingPlanId === plan.id}
 					{locked}
+					{promoCode}
 				/>
 			{/each}
 		</div>

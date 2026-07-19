@@ -5,9 +5,11 @@ import { PaymentProviderError } from '../errors';
 import { createTestDb, silentLogger, TestClock } from '../jobs/fixtures';
 import { PlanService } from '../plans';
 import { CheckoutService } from './checkout-service';
-import { addPlan, addUser } from './fixtures';
+import { addPlan, addPromo, addUser } from './fixtures';
 import { OrderService } from './order-service';
 import { PriceCalculator } from './price-calculator';
+import { PromoService } from './promo-service';
+import { PromoValidator } from './promo-validator';
 
 /**
  * A5's acceptance criteria (tech.md 16, 10 steps 1-4): the server recomputes the price, writes an
@@ -31,6 +33,7 @@ beforeEach(() => {
 		orders,
 		new PlanService(db, 'usd', { now: clock.now }),
 		new PriceCalculator(),
+		new PromoService(db, new PromoValidator(), orders, { now: clock.now }),
 		payments,
 		silentLogger()
 	);
@@ -115,6 +118,72 @@ describe('CheckoutService.start', () => {
 		const started = await checkout.start(user, plan.id);
 
 		expect(started).toEqual({ ok: false, error: 'plan_unavailable' });
+	});
+
+	it('sells at the discounted price when a code checks out', async () => {
+		const user = addUser(db);
+		const plan = addPlan(db, { priceMinor: 499 });
+		addPromo(db);
+
+		const started = await checkout.start(user, plan.id, 'START30');
+
+		expect(started.ok).toBe(true);
+		const order = orders.latest(user.id)!;
+		// 30% of 499, rounded down (tech.md 10) — and the three amounts have to add up in the row.
+		expect(order.basePriceMinor).toBe(499);
+		expect(order.discountMinor).toBe(149);
+		expect(order.finalPriceMinor).toBe(350);
+		// The provider is asked to charge what the order says, never what the form said.
+		expect(payments.checkouts[0].amountMinor).toBe(350);
+	});
+
+	it('records which code bought the discount, so the job can spend it', async () => {
+		const user = addUser(db);
+		const plan = addPlan(db);
+		const promo = addPromo(db);
+
+		await checkout.start(user, plan.id, 'start30');
+
+		expect(orders.latest(user.id)!.promoCodeId).toBe(promo.id);
+	});
+
+	it('refuses the purchase rather than quietly charging full price', async () => {
+		/**
+		 * Somebody who typed a code is buying because of it. Selling at the undiscounted price and
+		 * letting them discover it on the payment page is the one outcome here that costs their trust.
+		 */
+		const user = addUser(db);
+		const plan = addPlan(db);
+		addPromo(db, { isActive: false });
+
+		expect(await checkout.start(user, plan.id, 'START30')).toEqual({
+			ok: false,
+			error: 'promo_inactive'
+		});
+		expect(payments.checkouts).toHaveLength(0);
+		expect(orders.latest(user.id)).toBeNull();
+	});
+
+	it('names the reason a code was refused', async () => {
+		const user = addUser(db);
+		const plan = addPlan(db);
+
+		expect(await checkout.start(user, plan.id, 'NOSUCHCODE')).toEqual({
+			ok: false,
+			error: 'promo_not_found'
+		});
+	});
+
+	it('sells at full price when no code was typed', async () => {
+		const user = addUser(db);
+		const plan = addPlan(db, { priceMinor: 499 });
+		addPromo(db);
+
+		await checkout.start(user, plan.id);
+
+		const order = orders.latest(user.id)!;
+		expect(order.finalPriceMinor).toBe(499);
+		expect(order.promoCodeId).toBeNull();
 	});
 
 	it('refuses a plan id that names nothing', async () => {

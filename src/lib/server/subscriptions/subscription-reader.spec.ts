@@ -174,3 +174,64 @@ describe('SubscriptionReader.forUser', () => {
 		});
 	});
 });
+
+/**
+ * A12 — «Ниже история покупок из `orders`» (tech.md 11). The criteria are whose receipts these are,
+ * what order they come in, and that the row's payment secrets never leave the server.
+ */
+describe('SubscriptionReader.historyFor', () => {
+	it('shows this person their own purchases and nobody else’s', () => {
+		/**
+		 * The one rule that matters here. A receipt names what somebody bought and what they paid; a
+		 * missing WHERE would hand the whole shop's spending to whoever opened their profile first.
+		 */
+		const stranger = addUser(db, { telegramId: 700_000_999 });
+		pay(30);
+
+		const theirs = orders.create({
+			userId: stranger.id,
+			planId: plan.id,
+			plan: snapshot(7),
+			quote: new PriceCalculator().quote(snapshot(7), null),
+			provider: 'fake'
+		});
+
+		expect(reader.historyFor(user.id).map((order) => order.id)).not.toContain(theirs.id);
+		expect(reader.historyFor(stranger.id).map((order) => order.id)).toEqual([theirs.id]);
+	});
+
+	it('puts the newest purchase first', () => {
+		// The profile reads top-down, and the receipt somebody is looking for is the one they just made.
+		const first = pay(7);
+		clock.advance(DAY_MS);
+		const second = pay(30);
+
+		expect(reader.historyFor(user.id).map((order) => order.id)).toEqual([second.id, first.id]);
+	});
+
+	it('honours the cap it is given', () => {
+		pay(7);
+		clock.advance(DAY_MS);
+		pay(30);
+		clock.advance(DAY_MS);
+		pay(90);
+
+		expect(reader.historyFor(user.id, 2)).toHaveLength(2);
+	});
+
+	it('keeps unpaid attempts in the list, so a failed purchase is not silently forgotten', () => {
+		const abandoned = orders.create({
+			userId: user.id,
+			planId: plan.id,
+			plan: snapshot(30),
+			quote: new PriceCalculator().quote(snapshot(30), null),
+			provider: 'fake'
+		});
+
+		const listed = reader.historyFor(user.id);
+
+		expect(listed.map((order) => order.id)).toEqual([abandoned.id]);
+		expect(listed[0].status).toBe('pending');
+		expect(listed[0].paidAt).toBeNull();
+	});
+});

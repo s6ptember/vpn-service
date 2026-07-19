@@ -1,5 +1,12 @@
 import type { Db } from '../db/client';
-import { plans, users, type PlanRow, type UserRow } from '../db/schema';
+import {
+	plans,
+	promoCodes,
+	users,
+	type PlanRow,
+	type PromoCodeRow,
+	type UserRow
+} from '../db/schema';
 
 /**
  * Rows the billing and provisioning specs start from. Shared so every one of them describes the
@@ -20,6 +27,27 @@ export function addUser(db: Db, overrides: Partial<UserRow> = {}): UserRow {
 			languageCode: 'ru',
 			createdAt: SEED_TIME,
 			updatedAt: SEED_TIME,
+			...overrides
+		})
+		.returning()
+		.get();
+}
+
+/** The seeded percentage code (scripts/seed.ts): 30% off, unlimited, open-ended. */
+export function addPromo(db: Db, overrides: Partial<PromoCodeRow> = {}): PromoCodeRow {
+	return db
+		.insert(promoCodes)
+		.values({
+			code: 'START30',
+			discountType: 'percent',
+			discountValue: 30,
+			maxUses: null,
+			usedCount: 0,
+			validFrom: null,
+			validUntil: null,
+			isActive: true,
+			createdAt: SEED_TIME,
+			archivedAt: null,
 			...overrides
 		})
 		.returning()

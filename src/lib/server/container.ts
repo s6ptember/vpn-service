@@ -8,7 +8,11 @@ import {
 	CheckoutService,
 	OrderService,
 	PaymentWebhookService,
-	PriceCalculator
+	PriceCalculator,
+	PromoCheckInputParser,
+	PromoInputParser,
+	PromoService,
+	PromoValidator
 } from './billing';
 import { FakeMarzban, MarzbanHttp, type MarzbanApi } from './clients/marzban';
 import { FakePayments, StripePayments, type PaymentProvider } from './clients/payments';
@@ -102,9 +106,34 @@ export const jobs = new JobQueue(db);
 
 export const orders = new OrderService(db);
 
-export const checkout = new CheckoutService(orders, plans, new PriceCalculator(), payments, log);
+export const promos = new PromoService(db, new PromoValidator(), orders);
+
+export const checkout = new CheckoutService(
+	orders,
+	plans,
+	new PriceCalculator(),
+	promos,
+	payments,
+	log
+);
 
 export const checkoutInput = new CheckoutInputParser();
+
+export const promoCheckInput = new PromoCheckInputParser();
+
+export const promoInput = new PromoInputParser();
+
+/**
+ * CLAUDE.md 2: five promo attempts per ten minutes per person. Keyed by user id rather than by IP —
+ * a code is guessed from an account, and the account is the thing we can actually count.
+ *
+ * Only the two actions that take a typed code spend from it, and only when the code was refused: a
+ * code that resolves teaches an attacker nothing they did not already hold, while every refusal is
+ * one bit of the answer to "does this code exist". Stateful, but it is infrastructure rather than
+ * request data — nothing in it belongs to one person's session — and one replica (tech.md 3) is what
+ * lets it live in this process.
+ */
+export const promoLimiter = new RateLimiter({ limit: 5, windowMs: 10 * 60_000 });
 
 /**
  * The provider id is recorded on every dedupe row, so a database can always be read back knowing
@@ -124,7 +153,9 @@ const worker = new JobWorker(
 	jobs,
 	[
 		new TelegramSendMessageHandler(telegram, log),
-		new SubscriptionProvisionHandler(orders, subscriptions, users, marzban, jobs, log)
+		new SubscriptionProvisionHandler(orders, subscriptions, users, promos, marzban, jobs, log, {
+			adminChatId: config.ADMIN_CHAT_ID
+		})
 	],
 	log,
 	{ adminChatId: config.ADMIN_CHAT_ID }

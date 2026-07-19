@@ -1,8 +1,8 @@
-import { and, asc, desc, eq } from 'drizzle-orm';
+import { and, asc, desc, eq, inArray, isNull, ne, sql } from 'drizzle-orm';
 import { nanoid } from 'nanoid';
 import type { PlanSnapshot, PriceQuote } from '$lib/types';
 import type { Db } from '../db/client';
-import { orders, type OrderRow } from '../db/schema';
+import { orders, promoRedemptions, type OrderRow } from '../db/schema';
 
 export interface CreateOrderInput {
 	userId: number;
@@ -152,16 +152,90 @@ export class OrderService {
 			.all();
 	}
 
-	/** The order the person is most likely looking at right now. Drives the "Ждём оплату" screen. */
+	/**
+	 * A12 — the purchase history, newest first. `createdAt` rather than `paidAt` because this list
+	 * shows every attempt, paid or not, and an unpaid order has no payment date to sort on; the
+	 * (userId, createdAt) index is on exactly this pair.
+	 *
+	 * Capped by the caller: an unbounded read grows with the best customer the shop has.
+	 */
+	listForUser(userId: number, limit: number): OrderRow[] {
+		return this.db
+			.select()
+			.from(orders)
+			.where(eq(orders.userId, userId))
+			.orderBy(desc(orders.createdAt), desc(orders.id))
+			.limit(limit)
+			.all();
+	}
+
+	/**
+	 * This person's orders quoted with `promoCodeId` that have not been settled against them yet:
+	 * still awaiting payment, or paid and not yet provisioned.
+	 *
+	 * PromoService counts these alongside real redemptions when it prices a checkout. The redemption
+	 * row is written by the provision job, well after the money lands, so without this an order on a
+	 * payment page — or one already paid and waiting for the worker — is invisible, and the same code
+	 * could be spent twice. See PromoService.resolve.
+	 */
+	countUnsettledWithPromo(userId: number, promoCodeId: number): number {
+		const row = this.db
+			.select({ count: sql<number>`count(*)` })
+			.from(orders)
+			.where(
+				and(
+					eq(orders.userId, userId),
+					eq(orders.promoCodeId, promoCodeId),
+					inArray(orders.status, ['pending', 'paid'])
+				)
+			)
+			.get();
+
+		return row?.count ?? 0;
+	}
+
+	/**
+	 * How many of `promoCodeId`'s uses **other people** are holding but have not yet had counted.
+	 *
+	 * This is the shop-wide half of the same problem `countUnsettledWithPromo` solves per person, and
+	 * it is what keeps `maxUses` meaning something. `usedCount` moves only in the provision job, well
+	 * after payment, so a code with one use left reads as available to everybody who asks during the
+	 * thirty minutes a Stripe session lives: without this, one `maxUses: 1` code quotes a discount to
+	 * every buyer who tries, all of them are charged, and the shop honours far more discounts than it
+	 * agreed to sell.
+	 *
+	 * Two exclusions, and both matter:
+	 *  - the caller's own orders, because their claim is reported as `already_used` rather than as a
+	 *    use of the shared budget, and counting it here would refuse them their own discount;
+	 *  - orders that already carry a redemption row, because those are exactly the ones `usedCount`
+	 *    has already been incremented for, and counting them again would retire the code early.
+	 */
+	countUnsettledForPromo(promoCodeId: number, exceptUserId: number): number {
+		const row = this.db
+			.select({ count: sql<number>`count(*)` })
+			.from(orders)
+			.leftJoin(promoRedemptions, eq(promoRedemptions.orderId, orders.id))
+			.where(
+				and(
+					eq(orders.promoCodeId, promoCodeId),
+					ne(orders.userId, exceptUserId),
+					inArray(orders.status, ['pending', 'paid']),
+					isNull(promoRedemptions.id)
+				)
+			)
+			.get();
+
+		return row?.count ?? 0;
+	}
+
+	/**
+	 * The order the person is most likely looking at right now. Drives the "Ждём оплату" screen.
+	 *
+	 * The top of the history, by construction rather than by coincidence: the checkout poller pins
+	 * this row's id while the profile lists the same rows underneath, and two separately written
+	 * ORDER BY clauses would eventually disagree about which purchase is the current one.
+	 */
 	latest(userId: number): OrderRow | null {
-		return (
-			this.db
-				.select()
-				.from(orders)
-				.where(eq(orders.userId, userId))
-				.orderBy(desc(orders.createdAt), desc(orders.id))
-				.limit(1)
-				.get() ?? null
-		);
+		return this.listForUser(userId, 1)[0] ?? null;
 	}
 }

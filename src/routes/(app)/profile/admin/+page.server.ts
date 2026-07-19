@@ -1,16 +1,25 @@
 import { fail } from '@sveltejs/kit';
 import { config } from '$lib/server/config';
-import { planInput, plans } from '$lib/server/container';
+import { planInput, plans, promoInput, promos } from '$lib/server/container';
 import { log } from '$lib/server/log';
 import type { Actions, PageServerLoad } from './$types';
 
 /**
- * A4 — plans CRUD. Mutations go through form actions rather than hand-rolled endpoints, so CSRF by
- * Origin, no-JS submits and one validation path come for free (CLAUDE.md 1.5).
+ * A4 — plans CRUD, A11 — promo codes CRUD. Mutations go through form actions rather than hand-rolled
+ * endpoints, so CSRF by Origin, no-JS submits and one validation path come for free (CLAUDE.md 1.5).
  */
 
-/** Which form the answer belongs to: a plan id, or null for the create form. */
-type Target = number | null;
+/**
+ * Which form the answer belongs to.
+ *
+ * `kind` is not decoration: plans and promo codes have independent id sequences, so an answer about
+ * promo 3 would otherwise land on the card for plan 3 — a save reported under a row that was never
+ * touched. `id` is null for the two create forms.
+ */
+interface Target {
+	kind: 'plan' | 'promo';
+	id: number | null;
+}
 
 interface ActionResult {
 	target: Target;
@@ -45,6 +54,9 @@ const ok = (target: Target, message: string): ActionResult => ({
 	values: {}
 });
 
+const plan = (id: number | null): Target => ({ kind: 'plan', id });
+const promo = (id: number | null): Target => ({ kind: 'promo', id });
+
 /**
  * The guard in hooks.server.ts already 403s a signed-in non-admin, and the shell still renders for a
  * request that has no cookie yet (tech.md 9). That render must not hand the plan list to nobody, so
@@ -52,6 +64,12 @@ const ok = (target: Target, message: string): ActionResult => ({
  */
 export const load: PageServerLoad = async ({ locals }) => ({
 	plans: isAdmin(locals) ? plans.listEditable() : [],
+	/**
+	 * Gated for the same reason, and it matters more here than for plans: a live promo code is a
+	 * bearer secret — anybody holding one can spend it — so the list must never render for a request
+	 * that has not proved who it belongs to.
+	 */
+	promoCodes: isAdmin(locals) ? promos.listEditable() : [],
 	// One currency for the whole base (tech.md 5). The form shows it; it never submits it.
 	currency: config.PRICE_CURRENCY
 });
@@ -62,7 +80,7 @@ export const load: PageServerLoad = async ({ locals }) => ({
  */
 const forbidden = () =>
 	fail(403, {
-		target: null,
+		target: plan(null),
 		ok: false,
 		message: 'Раздел только для администратора.',
 		errors: {},
@@ -78,7 +96,7 @@ export const actions = {
 
 		if (!parsed.ok) {
 			return fail(400, {
-				target: null,
+				target: plan(null),
 				ok: false,
 				message: null,
 				errors: parsed.error,
@@ -86,10 +104,10 @@ export const actions = {
 			} satisfies ActionResult);
 		}
 
-		const plan = plans.create(parsed.value);
-		log.info('admin_plan_created', { requestId: locals.requestId, planId: plan.id });
+		const created = plans.create(parsed.value);
+		log.info('admin_plan_created', { requestId: locals.requestId, planId: created.id });
 
-		return ok(null, `Тариф «${plan.name}» создан.`);
+		return ok(plan(null), `Тариф «${created.name}» создан.`);
 	},
 
 	update: async ({ request, locals }) => {
@@ -100,7 +118,7 @@ export const actions = {
 
 		if (!id.ok) {
 			return fail(400, {
-				target: null,
+				target: plan(null),
 				ok: false,
 				message: id.error,
 				errors: {},
@@ -112,7 +130,7 @@ export const actions = {
 
 		if (!parsed.ok) {
 			return fail(400, {
-				target: id.value,
+				target: plan(id.value),
 				ok: false,
 				message: null,
 				errors: parsed.error,
@@ -124,7 +142,7 @@ export const actions = {
 
 		if (!updated.ok) {
 			return fail(409, {
-				target: id.value,
+				target: plan(id.value),
 				ok: false,
 				message:
 					updated.error === 'archived'
@@ -137,7 +155,7 @@ export const actions = {
 
 		log.info('admin_plan_updated', { requestId: locals.requestId, planId: id.value });
 
-		return ok(id.value, `Тариф «${updated.value.name}» сохранён.`);
+		return ok(plan(id.value), `Тариф «${updated.value.name}» сохранён.`);
 	},
 
 	archive: async ({ request, locals }) => {
@@ -148,7 +166,7 @@ export const actions = {
 
 		if (!id.ok) {
 			return fail(400, {
-				target: null,
+				target: plan(null),
 				ok: false,
 				message: id.error,
 				errors: {},
@@ -160,7 +178,7 @@ export const actions = {
 
 		if (!archived.ok) {
 			return fail(409, {
-				target: id.value,
+				target: plan(id.value),
 				ok: false,
 				message: 'Такого тарифа больше нет.',
 				errors: {},
@@ -170,6 +188,132 @@ export const actions = {
 
 		log.info('admin_plan_archived', { requestId: locals.requestId, planId: id.value });
 
-		return ok(id.value, `Тариф «${archived.value.name}» в архиве.`);
+		return ok(plan(id.value), `Тариф «${archived.value.name}» в архиве.`);
+	},
+
+	/**
+	 * A11 — promo codes CRUD. The same shape as the plan actions above, and deliberately so: one
+	 * screen, one way an answer comes back, one way a refusal is phrased.
+	 *
+	 * Codes are never logged, only their ids. A working promo code is spendable by whoever reads it,
+	 * and `redact()` masks by key name rather than by value (CLAUDE.md 2).
+	 */
+	createPromo: async ({ request, locals }) => {
+		if (!isAdmin(locals)) return forbidden();
+
+		const values = formValues(await request.formData());
+		const parsed = promoInput.parse(values);
+
+		if (!parsed.ok) {
+			return fail(400, {
+				target: promo(null),
+				ok: false,
+				message: null,
+				errors: parsed.error,
+				values
+			} satisfies ActionResult);
+		}
+
+		const created = promos.create(parsed.value);
+
+		if (!created.ok) {
+			// The code is unique (tech.md 5). Two campaigns reaching for the same obvious name is an
+			// ordinary thing for an admin to do, not a 500.
+			return fail(400, {
+				target: promo(null),
+				ok: false,
+				message: null,
+				errors: { code: 'Код: такой промокод уже есть' },
+				values
+			} satisfies ActionResult);
+		}
+
+		log.info('admin_promo_created', { requestId: locals.requestId, promoCodeId: created.value.id });
+
+		return ok(promo(null), `Промокод создан.`);
+	},
+
+	updatePromo: async ({ request, locals }) => {
+		if (!isAdmin(locals)) return forbidden();
+
+		const values = formValues(await request.formData());
+		const id = promoInput.parseId(values);
+
+		if (!id.ok) {
+			return fail(400, {
+				target: promo(null),
+				ok: false,
+				message: id.error,
+				errors: {},
+				values
+			} satisfies ActionResult);
+		}
+
+		const parsed = promoInput.parse(values);
+
+		if (!parsed.ok) {
+			return fail(400, {
+				target: promo(id.value),
+				ok: false,
+				message: null,
+				errors: parsed.error,
+				values
+			} satisfies ActionResult);
+		}
+
+		const updated = promos.update(id.value, parsed.value);
+
+		if (!updated.ok) {
+			const message = {
+				archived: 'Промокод уже в архиве, его больше нельзя изменить.',
+				not_found: 'Такого промокода больше нет.',
+				code_taken: 'Промокод с таким кодом уже есть.'
+			}[updated.error];
+
+			return fail(409, {
+				target: promo(id.value),
+				ok: false,
+				message,
+				errors: {},
+				values
+			} satisfies ActionResult);
+		}
+
+		log.info('admin_promo_updated', { requestId: locals.requestId, promoCodeId: id.value });
+
+		return ok(promo(id.value), `Промокод сохранён.`);
+	},
+
+	archivePromo: async ({ request, locals }) => {
+		if (!isAdmin(locals)) return forbidden();
+
+		const values = formValues(await request.formData());
+		const id = promoInput.parseId(values);
+
+		if (!id.ok) {
+			return fail(400, {
+				target: promo(null),
+				ok: false,
+				message: id.error,
+				errors: {},
+				values
+			} satisfies ActionResult);
+		}
+
+		const archived = promos.archive(id.value);
+
+		if (!archived.ok) {
+			return fail(409, {
+				target: promo(id.value),
+				ok: false,
+				message: 'Такого промокода больше нет.',
+				errors: {},
+				values
+			} satisfies ActionResult);
+		}
+
+		log.info('admin_promo_archived', { requestId: locals.requestId, promoCodeId: id.value });
+
+		return ok(promo(id.value), `Промокод «${archived.value.code}» в архиве.`);
 	}
 } satisfies Actions;
