@@ -11,7 +11,10 @@ import type { Result } from '$lib/types';
  */
 const CheckoutSchema = v.object({
 	planId: v.pipe(
-		v.optional(v.string(), ''),
+		// The message is ours even for the type check: FormData yields strings, but a File would
+		// land here as an object, and valibot's own English sentence is written for a schema author
+		// rather than for the person reading it.
+		v.optional(v.string('Не поняли, какой тариф вы выбрали.'), ''),
 		v.trim(),
 		v.regex(/^\d+$/, 'Не поняли, какой тариф вы выбрали.'),
 		// 16 digits cannot be a row id; without the cap a long numeric string reaches Number() and

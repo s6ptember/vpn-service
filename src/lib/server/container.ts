@@ -111,7 +111,8 @@ export const checkoutInput = new CheckoutInputParser();
  * which implementation signed what it holds.
  */
 export const paymentWebhooks = new PaymentWebhookService(db, orders, jobs, log, {
-	provider: payments.id
+	provider: payments.id,
+	adminChatId: config.ADMIN_CHAT_ID
 });
 
 export const subscriptions = new SubscriptionService(db);

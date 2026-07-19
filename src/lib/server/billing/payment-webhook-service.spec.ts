@@ -71,6 +71,12 @@ const paidEvent = (
 		...overrides
 	}) satisfies PaymentEvent;
 
+/** The one person the app alerts when money arrives that it cannot turn into access. */
+const ADMIN_CHAT_ID = 100_000_001;
+
+const adminAlerts = () =>
+	db.select().from(jobsTable).where(eq(jobsTable.type, 'telegram.send_message')).all();
+
 const provisionJobs = () =>
 	db.select().from(jobsTable).where(eq(jobsTable.type, 'subscription.provision')).all();
 
@@ -81,6 +87,7 @@ beforeEach(() => {
 	queue = new JobQueue(db, clock.now);
 	service = new PaymentWebhookService(db, orders, queue, silentLogger(), {
 		provider: 'stripe',
+		adminChatId: ADMIN_CHAT_ID,
 		now: clock.now
 	});
 });
@@ -149,6 +156,50 @@ describe('PaymentWebhookService.handle', () => {
 
 		expect(orders.findById(order.id)!.status).toBe('pending');
 		expect(provisionJobs()).toHaveLength(0);
+
+		/**
+		 * Money collected, access refused, and no retry can change either — so somebody has to be
+		 * told. A wrong PRICE_CURRENCY would otherwise refuse every payment the shop takes while the
+		 * only trace was a log line nobody is watching.
+		 */
+		const alerts = adminAlerts();
+		expect(alerts).toHaveLength(1);
+		expect(alerts[0].payload).toMatchObject({ chatId: ADMIN_CHAT_ID });
+	});
+
+	it('alerts once per event, however many times Stripe redelivers it', () => {
+		const order = openOrder();
+		const event = paidEvent(order.publicId, { amountMinor: 1 });
+
+		service.handle(event);
+		service.handle(event);
+		service.handle(paidEvent(order.publicId, { eventId: 'evt_2', amountMinor: 1 }));
+
+		// Two distinct problems, two messages; a redelivery of one of them adds nothing.
+		expect(adminAlerts()).toHaveLength(2);
+	});
+
+	it('alerts when a payment arrives for an order this database has never had', () => {
+		expect(service.handle(paidEvent('ord_never_existed'))).toBe('unknown_order');
+
+		expect(adminAlerts()).toHaveLength(1);
+	});
+
+	it('alerts when a payment lands on an order that was already settled another way', () => {
+		const order = openOrder();
+		service.handle({
+			kind: 'failed',
+			eventId: 'evt_expired',
+			orderPublicId: order.publicId,
+			reason: 'expired'
+		});
+
+		// The session expired, and then the money arrived anyway.
+		expect(service.handle(paidEvent(order.publicId, { eventId: 'evt_late' }))).toBe('conflict');
+
+		expect(orders.findById(order.id)!.status).toBe('failed');
+		expect(provisionJobs()).toHaveLength(0);
+		expect(adminAlerts()).toHaveLength(1);
 	});
 
 	it('refuses to grant access when the currency does not match the order', () => {
@@ -218,6 +269,7 @@ describe('PaymentWebhookService.handle', () => {
 		};
 		const broken = new PaymentWebhookService(db, orders, brokenQueue, silentLogger(), {
 			provider: 'stripe',
+			adminChatId: ADMIN_CHAT_ID,
 			now: clock.now
 		});
 

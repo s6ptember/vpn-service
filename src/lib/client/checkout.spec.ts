@@ -1,6 +1,12 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { OrderDTO, SubscriptionDTO } from '$lib/types';
-import { CheckoutWatcher, checkoutReturn, type CheckoutView } from './checkout.svelte';
+import {
+	CheckoutWatcher,
+	checkoutReturn,
+	consumeCheckoutReturn,
+	resetConsumedStartParam,
+	type CheckoutView
+} from './checkout.svelte';
 
 /**
  * A7's acceptance criteria, tech.md 16: `start_param=order_<publicId>`, poll `invalidate` for up to
@@ -56,8 +62,11 @@ class FakeLoad {
 let load: FakeLoad;
 let clock: number;
 
-const watcher = () =>
-	new CheckoutWatcher(load.read, { invalidate: load.invalidate, now: () => clock });
+function watcher() {
+	const created = new CheckoutWatcher({ invalidate: load.invalidate, now: () => clock });
+	created.attach(load.read);
+	return created;
+}
 
 /** Runs the poll loop forward by `ms` of both timer time and clock time. */
 async function advance(ms: number) {
@@ -71,6 +80,7 @@ beforeEach(() => {
 	vi.useFakeTimers();
 	load = new FakeLoad();
 	clock = PAID_AT;
+	resetConsumedStartParam();
 });
 
 afterEach(() => {
@@ -247,6 +257,52 @@ describe('CheckoutWatcher', () => {
 		const polls = load.polls;
 		await advance(30_000);
 		expect(load.polls).toBe(polls);
+	});
+
+	it('survives the page it was started from', async () => {
+		// A person taps Купить and swipes to Профиль. The watcher outlives that component, so the
+		// wait must too — otherwise the banner vanishes, every Купить goes live again, and a second
+		// order is one tap from a second charge.
+		load.view = { subscription: null, latestOrder: order({ id: 2 }), awaitingKey: false };
+		const w = watcher();
+		w.start(2);
+
+		// The page unmounts: its effect hands the view back.
+		const detachSecond = w.attach(load.read);
+		detachSecond();
+
+		expect(w.phase).toBe('waiting');
+
+		// The next page lends its own view, and the answer arrives through it.
+		w.attach(load.read);
+		load.view = {
+			subscription: subscription(),
+			latestOrder: order({ id: 2, status: 'paid', paidAt: PAID_AT }),
+			awaitingKey: false
+		};
+		await advance(3_000);
+
+		expect(w.phase).toBe('ready');
+	});
+});
+
+describe('consumeCheckoutReturn', () => {
+	it('reads a launch parameter once, however many times a page remounts', () => {
+		// start_param is fixed for the whole launch while the router rebuilds a page on every swipe.
+		// Reading it per mount replayed «Оплата отменена» at somebody who had since paid.
+		expect(consumeCheckoutReturn('cancel_ab12')).toBe('canceled');
+		expect(consumeCheckoutReturn('cancel_ab12')).toBeNull();
+		expect(consumeCheckoutReturn('cancel_ab12')).toBeNull();
+	});
+
+	it('still reads the next launch', () => {
+		expect(consumeCheckoutReturn('order_ab12')).toBe('returned');
+		expect(consumeCheckoutReturn('order_cd34')).toBe('returned');
+	});
+
+	it('does not spend the memo on a parameter it does not understand', () => {
+		expect(consumeCheckoutReturn('promo_summer')).toBeNull();
+		expect(consumeCheckoutReturn('order_ab12')).toBe('returned');
 	});
 });
 

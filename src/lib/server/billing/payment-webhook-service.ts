@@ -26,6 +26,8 @@ export type WebhookOutcome =
 export interface PaymentWebhookServiceOptions {
 	/** Which implementation signed the event, recorded on the dedupe row. Comes from PaymentProvider.id. */
 	provider: 'stripe' | 'fake';
+	/** Injected, never read from config here, so the service stays constructible in a test. */
+	adminChatId: number;
 	now?: () => number;
 }
 
@@ -41,6 +43,7 @@ export interface PaymentWebhookServiceOptions {
 export class PaymentWebhookService {
 	private readonly now: () => number;
 	private readonly provider: 'stripe' | 'fake';
+	private readonly adminChatId: number;
 
 	constructor(
 		private readonly db: Db,
@@ -51,6 +54,7 @@ export class PaymentWebhookService {
 	) {
 		this.now = opts.now ?? Date.now;
 		this.provider = opts.provider;
+		this.adminChatId = opts.adminChatId;
 	}
 
 	handle(event: PaymentEvent): WebhookOutcome {
@@ -99,6 +103,12 @@ export class PaymentWebhookService {
 						eventId: event.eventId,
 						orderPublicId: event.orderPublicId
 					});
+					if (event.kind === 'paid') {
+						this.#alert(
+							event.eventId,
+							`Stripe подтвердил оплату заказа ${event.orderPublicId}, которого нет в базе. Проверьте платёж в дашборде.`
+						);
+					}
 					return 'unknown_order';
 				}
 
@@ -125,6 +135,15 @@ export class PaymentWebhookService {
 				expectedCurrency: order.currency,
 				paidCurrency: event.currency
 			});
+			/**
+			 * The money is with Stripe and the subscription is not granted. Nothing retries this — the
+			 * amounts will not change — so without an alert the only trace would be a log line nobody
+			 * reads, while a misconfiguration of this kind refuses every payment the shop takes.
+			 */
+			this.#alert(
+				event.eventId,
+				`Оплата заказа ${order.publicId} пришла на ${event.amountMinor} ${event.currency}, а заказ на ${order.finalPriceMinor} ${order.currency}. Доступ не выдан, проверьте платёж.`
+			);
 			return 'amount_mismatch';
 		}
 
@@ -150,6 +169,12 @@ export class PaymentWebhookService {
 				status: row?.status ?? 'missing',
 				paymentIntentId: event.paymentIntentId
 			});
+			// A payment landed on an order that is failed, canceled, or already paid by a DIFFERENT
+			// intent. Somebody has been charged for something they will not receive.
+			this.#alert(
+				event.eventId,
+				`Оплата заказа ${order.publicId} пришла, но заказ уже в статусе «${row?.status ?? 'нет заказа'}». Доступ не выдан, проверьте платёж.`
+			);
 			return 'conflict';
 		}
 
@@ -175,5 +200,21 @@ export class PaymentWebhookService {
 	/** tech.md 6: one provision per order, enforced by the unique idempotency key. */
 	#provision(orderId: number): void {
 		this.jobs.enqueue('subscription.provision', { orderId }, `provision:order:${orderId}`);
+	}
+
+	/**
+	 * Tells the admin about money we hold and access we did not grant. Keyed by the event, so the
+	 * redeliveries Stripe sends do not turn one problem into a stream of identical messages.
+	 *
+	 * No amounts of anybody's money beyond the order's own, no ids from the payment processor
+	 * beyond the public one: this ends up in a chat, and a chat is not a log (CLAUDE.md 2).
+	 */
+	#alert(eventId: string, text: string): void {
+		const dedupeKey = `webhook:alert:${eventId}`;
+		this.jobs.enqueue(
+			'telegram.send_message',
+			{ chatId: this.adminChatId, text, dedupeKey },
+			`tg:${dedupeKey}`
+		);
 	}
 }

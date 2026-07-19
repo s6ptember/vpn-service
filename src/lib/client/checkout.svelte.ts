@@ -79,14 +79,33 @@ export class CheckoutWatcher {
 	#startedAt = 0;
 	#timer: ReturnType<typeof setTimeout> | null = null;
 
-	readonly #read: () => CheckoutView;
+	/**
+	 * Whichever page is on screen supplies this. It is a getter over that page's `data`, replaced on
+	 * every mount rather than owned by the watcher, because the watcher outlives the page: a person
+	 * who taps Купить and then swipes to Профиль must not lose the wait they started.
+	 */
+	#read = $state<(() => CheckoutView) | null>(null);
+
 	readonly #invalidate: (key: string) => Promise<void>;
 	readonly #now: () => number;
 
-	constructor(read: () => CheckoutView, opts: CheckoutWatcherOptions = {}) {
-		this.#read = read;
+	constructor(opts: CheckoutWatcherOptions = {}) {
 		this.#invalidate = opts.invalidate ?? invalidate;
 		this.#now = opts.now ?? Date.now;
+	}
+
+	/** Called from a page's $effect. Returns the detach function that effect should give back. */
+	attach(read: () => CheckoutView): () => void {
+		this.#read = read;
+
+		return () => {
+			// Only if nobody else has taken over: two pages overlap for one tick during a transition.
+			if (this.#read === read) this.#read = null;
+		};
+	}
+
+	#view(): CheckoutView {
+		return this.#read?.() ?? { subscription: null, latestOrder: null, awaitingKey: false };
 	}
 
 	/**
@@ -98,7 +117,7 @@ export class CheckoutWatcher {
 		if (this.#canceled) return 'canceled';
 		if (!this.#announcing) return 'idle';
 
-		const { latestOrder, awaitingKey } = this.#read();
+		const { latestOrder, awaitingKey } = this.#view();
 
 		// Nothing to read yet, or what we can read predates the order we are waiting for.
 		if (
@@ -127,7 +146,7 @@ export class CheckoutWatcher {
 
 	/** Whether the load has caught up with the order this watcher is waiting for. */
 	get #current(): boolean {
-		const { latestOrder } = this.#read();
+		const { latestOrder } = this.#view();
 		return this.#expectedOrderId === null || latestOrder?.id === this.#expectedOrderId;
 	}
 
@@ -137,7 +156,7 @@ export class CheckoutWatcher {
 	 * wrong and alarming.
 	 */
 	get paid(): boolean {
-		return this.#current && this.#read().latestOrder?.status === 'paid';
+		return this.#current && this.#view().latestOrder?.status === 'paid';
 	}
 
 	/**
@@ -175,7 +194,13 @@ export class CheckoutWatcher {
 		this.#expectedOrderId = null;
 	}
 
-	/** Timers live outside Svelte, so they are stopped by hand — from a component's $effect cleanup. */
+	/**
+	 * Timers live outside Svelte, so they are stopped by hand.
+	 *
+	 * Deliberately NOT called when a page unmounts: the wait belongs to the person, not to the
+	 * screen they happen to be looking at. Swiping to Профиль mid-payment used to throw the wait
+	 * away — no banner, every Купить live again, and a second order one tap from a second charge.
+	 */
 	stop(): void {
 		this.#polling = false;
 		if (this.#timer !== null) {
@@ -230,3 +255,42 @@ export function checkoutReturn(startParam: string | undefined): 'returned' | 'ca
 	if (ORDER_PARAM.test(startParam)) return 'returned';
 	return null;
 }
+
+/**
+ * The same reading, but only the FIRST time a given parameter is seen.
+ *
+ * `start_param` is fixed for the whole mini-app launch while the client router destroys and
+ * rebuilds a page on every trip between sections. Reading it per mount replayed the old banner on
+ * every return to Главная — and «Оплата отменена» would come back to somebody who had since paid
+ * and dismissed it.
+ */
+let consumedStartParam: string | null = null;
+
+export function consumeCheckoutReturn(
+	startParam: string | undefined
+): 'returned' | 'canceled' | null {
+	if (!startParam || startParam === consumedStartParam) return null;
+
+	const outcome = checkoutReturn(startParam);
+	if (outcome !== null) consumedStartParam = startParam;
+
+	return outcome;
+}
+
+/** Test seam only: module state persists across cases inside one vitest file. */
+export function resetConsumedStartParam(): void {
+	consumedStartParam = null;
+}
+
+/**
+ * One watcher for the whole app.
+ *
+ * A module singleton, which CLAUDE.md 1.2 forbids on the SERVER — there a module lives for the
+ * process and is shared by every request. This is client state: one browser tab, one person, and
+ * nothing under `$lib/server` imports it. The same exemption `toasts.svelte.ts` already relies on.
+ *
+ * It has to outlive a component, because the thing it tracks does: a payment opened from Главная is
+ * still in flight while the person is reading Профиль. Each page calls `attach()` from an $effect
+ * to lend it a view of its own load data.
+ */
+export const checkoutWatcher = new CheckoutWatcher();
