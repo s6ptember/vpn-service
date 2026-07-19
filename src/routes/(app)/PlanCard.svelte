@@ -3,7 +3,7 @@
 	import Badge from '$lib/ui/Badge.svelte';
 	import Money from '$lib/ui/Money.svelte';
 	import type { PlanDTO } from '$lib/types';
-	import { formatDays, perDayMinor } from './plan-value';
+	import { formatDays, formatTraffic, perDayMinor } from './plan-value';
 
 	interface Props {
 		plan: PlanDTO;
@@ -25,9 +25,7 @@
 	 */
 	let features = $derived([
 		`Доступ на ${formatDays(plan.durationDays)}`,
-		plan.trafficLimitBytes === 0
-			? 'Безлимитный трафик'
-			: `${Math.round(plan.trafficLimitBytes / 1024 ** 3)} ГБ трафика`,
+		formatTraffic(plan.trafficLimitBytes),
 		'Все локации',
 		'Ключ работает на всех устройствах'
 	]);

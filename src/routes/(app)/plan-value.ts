@@ -21,6 +21,22 @@ export function formatDays(days: number): string {
 	return `${days} ${DAY_WORDS[DAY_RULES.select(days)]}`;
 }
 
+/**
+ * The column stores bytes; people talk in gigabytes. The other direction lives in the valibot schema
+ * at $lib/server/plans/input.ts — a component cannot import a server module, and the frozen folder
+ * layout (tech.md 4) offers no shared non-server home a developer may add one to.
+ */
+const BYTES_PER_GIB = 1024 ** 3;
+
+export function gibFromBytes(bytes: number): number {
+	return Math.round(bytes / BYTES_PER_GIB);
+}
+
+/** 0 means unlimited (tech.md 5), which is a promise rather than a number. */
+export function formatTraffic(bytes: number): string {
+	return bytes === 0 ? 'Безлимитный трафик' : `${gibFromBytes(bytes)} ГБ трафика`;
+}
+
 /** Price per day in minor units, so Money stays the only thing that formats a price (CLAUDE.md 4). */
 export function perDayMinor(plan: PlanDTO): number {
 	return Math.round(plan.priceMinor / plan.durationDays);

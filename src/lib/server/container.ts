@@ -12,7 +12,7 @@ import { TelegramSendMessageHandler } from './jobs/handlers/telegram-send-messag
 import { JobQueue } from './jobs/queue';
 import { JobWorker } from './jobs/worker';
 import { log } from './log';
-import { PlanService } from './plans';
+import { PlanInputParser, PlanService } from './plans';
 import { RateLimiter } from './rate-limit';
 
 /**
@@ -81,7 +81,13 @@ export const telegramAuth = new TelegramAuthService(
 	initDataLimiter
 );
 
-export const plans = new PlanService(db);
+/**
+ * One currency for the whole base (tech.md 5). It is injected rather than read inside the domain,
+ * and it is why a plan's currency never comes from the admin form.
+ */
+export const plans = new PlanService(db, config.PRICE_CURRENCY);
+
+export const planInput = new PlanInputParser(config.PRICE_CURRENCY);
 
 export const jobs = new JobQueue(db);
 
