@@ -23,7 +23,6 @@ export {
 	CheckoutInputParser,
 	PromoCheckInputParser,
 	PromoInputParser,
-	optionalPromoCode,
 	type CheckoutInput,
 	type PromoInput
 } from './input';

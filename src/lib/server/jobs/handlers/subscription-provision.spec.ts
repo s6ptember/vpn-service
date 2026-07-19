@@ -2,7 +2,7 @@ import { eq } from 'drizzle-orm';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { UserService } from '$lib/server/auth/user-service';
 import { OrderService, PriceCalculator, PromoService, PromoValidator } from '$lib/server/billing';
-import { addPlan, addUser } from '$lib/server/billing/fixtures';
+import { addPlan, addPromo, addUser } from '$lib/server/billing/fixtures';
 import { FAKE_SUB_ORIGIN, FakeMarzban } from '$lib/server/clients/marzban';
 import type { Db } from '$lib/server/db/client';
 import {
@@ -11,7 +11,6 @@ import {
 	promoRedemptions,
 	subscriptions as subscriptionsTable,
 	type PlanRow,
-	type PromoCodeRow,
 	type UserRow
 } from '$lib/server/db/schema';
 import { MarzbanError } from '$lib/server/errors';
@@ -104,26 +103,6 @@ beforeEach(() => {
 	user = addUser(db);
 	plan = addPlan(db);
 });
-
-function addPromo(overrides: Partial<PromoCodeRow> = {}): PromoCodeRow {
-	return db
-		.insert(promoCodes)
-		.values({
-			code: 'START30',
-			discountType: 'percent',
-			discountValue: 30,
-			maxUses: null,
-			usedCount: 0,
-			validFrom: null,
-			validUntil: null,
-			isActive: true,
-			createdAt: new Date(clock.now()),
-			archivedAt: null,
-			...overrides
-		})
-		.returning()
-		.get();
-}
 
 const promoRow = (id: number) => db.select().from(promoCodes).where(eq(promoCodes.id, id)).get()!;
 
@@ -291,7 +270,7 @@ describe('SubscriptionProvisionHandler', () => {
 			racing,
 			queue,
 			silentLogger(),
-			{ now: clock.now }
+			{ now: clock.now, adminChatId: ADMIN_CHAT_ID }
 		);
 
 		const order = payFor(30);
@@ -316,6 +295,29 @@ describe('SubscriptionProvisionHandler', () => {
 		// And the retry succeeds without any repair step.
 		await handler.handle({ orderId: order.id });
 		expect(subscriptionRow()).not.toBeNull();
+	});
+
+	it('does not eat the promo code while the panel is down', async () => {
+		/**
+		 * Why the redemption runs after the panel call rather than before it. A Marzban outage retries
+		 * this job with a backoff up to an hour; a redemption written on the way in would spend a use
+		 * of the code on every attempt — and on a `maxUses` code, hand the buyer an overspend alert
+		 * for access they never received.
+		 */
+		const promo = addPromo(db);
+		const order = payFor(30, clock.now(), promo.id);
+		marzban.failNext(500);
+
+		await expect(handler.handle({ orderId: order.id })).rejects.toBeInstanceOf(MarzbanError);
+
+		expect(db.select().from(promoRedemptions).all()).toEqual([]);
+		expect(promoRow(promo.id).usedCount).toBe(0);
+
+		// The retry grants access and spends the code exactly once.
+		await handler.handle({ orderId: order.id });
+
+		expect(db.select().from(promoRedemptions).all()).toHaveLength(1);
+		expect(promoRow(promo.id).usedCount).toBe(1);
 	});
 
 	it('refuses to provision an order nobody paid for', async () => {
@@ -346,7 +348,7 @@ describe('SubscriptionProvisionHandler', () => {
 		 * handler leave one effect. Both at once: a retry after a Marzban timeout must not burn a
 		 * second use of the code.
 		 */
-		const promo = addPromo();
+		const promo = addPromo(db);
 		const order = payFor(30, clock.now(), promo.id);
 
 		await handler.handle({ orderId: order.id });
@@ -362,7 +364,7 @@ describe('SubscriptionProvisionHandler', () => {
 		 * already taken, so refusing the subscription over a discount the shop itself quoted would be
 		 * the worse failure — access goes out, the counter stays honest, and the admin hears about it.
 		 */
-		const promo = addPromo({ maxUses: 1, usedCount: 1 });
+		const promo = addPromo(db, { maxUses: 1, usedCount: 1 });
 		const order = payFor(30, clock.now(), promo.id);
 
 		await handler.handle({ orderId: order.id });

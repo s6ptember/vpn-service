@@ -115,20 +115,30 @@
 	const LABEL = 'mb-1.5 block px-1 text-[13px] font-medium text-muted';
 </script>
 
-{#snippet dateField(id: string, name: string, label: string, value: string, error?: string)}
+{#snippet dateField(name: 'validFrom' | 'validUntil', label: string)}
+	{@const id = `${formId}-${name}`}
+	{@const errorId = `${id}-error`}
+	{@const error = errorFor(name)}
+
 	<div>
 		<label for={id} class={LABEL}>{label}</label>
+		<!--
+			`name` is the field key, not a loose string: a typo would otherwise compile, write into a
+			property nobody reads, and submit an empty date — which parses to "no end date" and quietly
+			sells a campaign that never expires.
+		-->
 		<input
 			{id}
 			{name}
 			type="date"
-			{value}
-			oninput={(event) => (fields[name as 'validFrom' | 'validUntil'] = event.currentTarget.value)}
+			value={fields[name]}
+			oninput={(event) => (fields[name] = event.currentTarget.value)}
 			aria-invalid={error ? 'true' : undefined}
+			aria-describedby={error ? errorId : undefined}
 			class={CONTROL}
 		/>
 		{#if error}
-			<p class="mt-2 px-1 text-[13px] text-danger-700">{error}</p>
+			<p id={errorId} class="mt-2 px-1 text-[13px] text-danger-700">{error}</p>
 		{/if}
 	</div>
 {/snippet}
@@ -198,20 +208,8 @@
 			{/if}
 		</div>
 
-		{@render dateField(
-			`${formId}-from`,
-			'validFrom',
-			'Начало',
-			fields.validFrom,
-			errorFor('validFrom')
-		)}
-		{@render dateField(
-			`${formId}-until`,
-			'validUntil',
-			'Окончание',
-			fields.validUntil,
-			errorFor('validUntil')
-		)}
+		{@render dateField('validFrom', 'Начало')}
+		{@render dateField('validUntil', 'Окончание')}
 	</div>
 
 	<Input

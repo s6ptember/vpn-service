@@ -3,7 +3,7 @@ import { config } from '$lib/server/config';
 import { access, promoCheckInput, promoLimiter, promos } from '$lib/server/container';
 import { log } from '$lib/server/log';
 import type { PromoCodeDTO } from '$lib/types';
-import { PROMO_MESSAGES } from '../promo-copy';
+import { PROMO_MESSAGES, promoRateLimitMessage } from '../promo-copy';
 import type { Actions, PageServerLoad } from './$types';
 
 /**
@@ -18,13 +18,13 @@ export const load: PageServerLoad = async ({ locals, depends }) => {
 	// A7 polls this key while it waits for a payment to turn into a key (see (app)/+page.server.ts).
 	depends('app:subscription');
 
+	// One currency for the whole base (tech.md 5). The promo block shows it; it never submits it.
+	const currency = config.PRICE_CURRENCY;
+
 	/**
 	 * The shell renders before the cookie lands (tech.md 9), so a load with no user is normal and
 	 * answers empty. invalidateAll() after the exchange runs it again with the person in place.
 	 */
-	// One currency for the whole base (tech.md 5). The promo block shows it; it never submits it.
-	const currency = config.PRICE_CURRENCY;
-
 	if (!locals.user) {
 		return { subscription: null, latestOrder: null, awaitingKey: false, history: [], currency };
 	}
@@ -73,23 +73,23 @@ export const actions = {
 		if (!parsed.ok) return refuse(400, parsed.error, typed);
 
 		/**
-		 * CLAUDE.md 2: five attempts per ten minutes per person. Peeked before the lookup rather than
-		 * spent on it — a code that turns out to work is not an attempt at anything, and only refusals
-		 * teach a guesser whether a code exists.
+		 * CLAUDE.md 2: five attempts per ten minutes per person, shared with the purchase form on
+		 * Главная. Peeked before the lookup rather than spent on it — a code that turns out to work is
+		 * not an attempt at anything.
 		 */
-		const budget = promoLimiter.peek(String(locals.user.id));
+		const limiterKey = String(locals.user.id);
+		const budget = promoLimiter.peek(limiterKey);
+
 		if (!budget.allowed) {
-			return refuse(
-				429,
-				`Слишком много попыток. Попробуйте через ${Math.ceil(budget.retryAfterSec / 60)} мин.`,
-				typed
-			);
+			return refuse(429, promoRateLimitMessage(budget.retryAfterSec), typed);
 		}
 
 		const resolved = promos.resolve(parsed.value, locals.user.id);
 
 		if (!resolved.ok) {
-			promoLimiter.consume(String(locals.user.id));
+			// `already_used` is exempt: only the person already holding the code can provoke it, so
+			// charging for it punishes a customer instead of slowing a guesser. See (app)/+page.server.ts.
+			if (resolved.error !== 'already_used') promoLimiter.consume(limiterKey);
 			// The reason, never the code: a working promo code is a bearer secret, and redact() masks
 			// by key name rather than by value (CLAUDE.md 2).
 			log.info('promo_check_refused', { requestId: locals.requestId, reason: resolved.error });

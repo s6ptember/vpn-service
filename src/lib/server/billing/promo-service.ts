@@ -98,6 +98,17 @@ export class PromoService {
 	 * Stripe expires the session after thirty minutes (tech.md 10) and the webhook settles it to
 	 * `failed`, which drops it back out. A `paid` one never drains, and should not — it has bought the
 	 * discount whether or not the job has caught up with it yet.
+	 *
+	 * `maxUses` needs the same treatment for the same reason, one level up: the shared budget is
+	 * `usedCount`, which also only moves at provision time, so a code with one use left would read as
+	 * available to everybody who asked inside that same window — every one of them quoted a discount,
+	 * every one of them charged, and one use of the code sold many times over. The uses other people
+	 * are already holding are added to `usedCount` before the validator sees the row, so the budget it
+	 * tests against is the one that will actually exist once the workers catch up.
+	 *
+	 * The validator's own signature is untouched by all of this (tech.md 10 freezes it). It answers
+	 * "may this row be used by somebody who has spent it N times"; deciding what counts as spent is
+	 * this class's job, and it needs the database to do it.
 	 */
 	resolve(code: string, userId: number, now = this.now()): Result<PromoCodeDTO, PromoError> {
 		const promo = this.findByCode(code);
@@ -107,7 +118,10 @@ export class PromoService {
 			this.redemptionCount(promo.id, userId) +
 			this.orders.countUnsettledWithPromo(userId, promo.id);
 
-		return this.validator.check(promo, spent, now);
+		const claimed = this.orders.countUnsettledForPromo(promo.id, userId);
+		const budget = claimed === 0 ? promo : { ...promo, usedCount: promo.usedCount + claimed };
+
+		return this.validator.check(budget, spent, now);
 	}
 
 	/**

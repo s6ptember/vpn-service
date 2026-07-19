@@ -28,8 +28,12 @@ const DATE_FORMAT = new Intl.DateTimeFormat('ru-RU', {
 
 export interface SubscriptionProvisionOptions {
 	now?: () => number;
-	/** Where a promo that overspent is reported. Injected, never read from config here. */
-	adminChatId?: number;
+	/**
+	 * Where an overspent promo is reported. Required, like its two sibling handlers: made optional it
+	 * would default to "tell nobody", and the one thing this alert exists for is the case where money
+	 * was taken on a discount the shop had already run out of.
+	 */
+	adminChatId: number;
 }
 
 /**
@@ -59,7 +63,7 @@ export class SubscriptionProvisionHandler extends JobHandler<'subscription.provi
 	readonly schema = PayloadSchema;
 
 	private readonly now: () => number;
-	private readonly adminChatId: number | null;
+	private readonly adminChatId: number;
 
 	constructor(
 		private readonly orders: OrderService,
@@ -69,11 +73,11 @@ export class SubscriptionProvisionHandler extends JobHandler<'subscription.provi
 		private readonly marzban: MarzbanApi,
 		private readonly jobs: JobQueue,
 		private readonly log: Logger,
-		opts: SubscriptionProvisionOptions = {}
+		opts: SubscriptionProvisionOptions
 	) {
 		super();
 		this.now = opts.now ?? Date.now;
-		this.adminChatId = opts.adminChatId ?? null;
+		this.adminChatId = opts.adminChatId;
 	}
 
 	async handle(payload: v.InferOutput<typeof PayloadSchema>): Promise<void> {
@@ -160,8 +164,6 @@ export class SubscriptionProvisionHandler extends JobHandler<'subscription.provi
 			userId: order.userId,
 			promoCodeId: order.promoCodeId
 		});
-
-		if (this.adminChatId === null) return;
 
 		const dedupeKey = `promo:overspent:${order.id}`;
 		this.jobs.enqueue(

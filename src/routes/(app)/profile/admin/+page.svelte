@@ -7,7 +7,7 @@
 	import EmptyState from '$lib/ui/EmptyState.svelte';
 	import Modal from '$lib/ui/Modal.svelte';
 	import Money from '$lib/ui/Money.svelte';
-	import { formatDate } from '../../dates';
+	import { formatDateUtc } from '../../dates';
 	import { formatDays, formatTraffic } from '../../plan-value';
 	import PlanForm from './PlanForm.svelte';
 	import PromoForm from './PromoForm.svelte';
@@ -18,7 +18,7 @@
 	let creating = $state(false);
 	let creatingPromo = $state(false);
 	/** What the confirmation is about, and the form that will do the writing if it is confirmed. */
-	let archiving = $state<{ title: string; body: string; form: HTMLFormElement } | null>(null);
+	let archiving = $state<{ body: string; form: HTMLFormElement } | null>(null);
 	let confirmOpen = $state(false);
 
 	/**
@@ -53,24 +53,28 @@
 	/**
 	 * The validity window in one line. Both columns are nullable and each combination means something
 	 * different, so the four cases are spelled out rather than joined with a dash around empty strings.
+	 *
+	 * UTC, because that is how the window was written: PromoForm's date inputs speak calendar days and
+	 * the parser stores them as UTC boundaries. Read locally, this line would show a date the admin
+	 * never typed.
 	 */
 	function formatPromoWindow(from: number | null, until: number | null): string {
 		if (from === null && until === null) return 'Работает без ограничения по времени';
-		if (from === null) return `До ${formatDate(until!)}`;
-		if (until === null) return `С ${formatDate(from)}`;
-		return `${formatDate(from)} — ${formatDate(until)}`;
+		if (from === null) return `До ${formatDateUtc(until!)}`;
+		if (until === null) return `С ${formatDateUtc(from)}`;
+		return `${formatDateUtc(from)} — ${formatDateUtc(until)}`;
 	}
 
 	/**
 	 * Intercepts the archive submit so the dialog can ask first. Without JS the button submits its
 	 * own form directly: no confirmation step, but the write still works.
 	 */
-	function askArchive(event: MouseEvent, title: string, body: string) {
+	function askArchive(event: MouseEvent, body: string) {
 		const form = (event.currentTarget as HTMLElement).closest('form');
 		if (!form) return;
 
 		event.preventDefault();
-		archiving = { title, body, form };
+		archiving = { body, form };
 		confirmOpen = true;
 	}
 </script>
@@ -192,7 +196,6 @@
 									onclick={(event) =>
 										askArchive(
 											event,
-											'В архив?',
 											`«${plan.name}» пропадёт с главной и из этого списка. Прошлые заказы останутся, вернуть тариф обратно нельзя.`
 										)}
 									aria-label="Отправить тариф {plan.name} в архив"
@@ -328,7 +331,6 @@
 									onclick={(event) =>
 										askArchive(
 											event,
-											'В архив?',
 											`«${promo.code}» перестанет работать у всех. Прошлые заказы и применения останутся, вернуть промокод обратно нельзя.`
 										)}
 									aria-label="Отправить промокод {promo.code} в архив"
@@ -350,7 +352,7 @@
 
 <Modal
 	bind:open={confirmOpen}
-	title={archiving?.title ?? 'В архив?'}
+	title="В архив?"
 	confirmLabel="В архив"
 	cancelLabel="Отмена"
 	onconfirm={() => archiving?.form.requestSubmit()}

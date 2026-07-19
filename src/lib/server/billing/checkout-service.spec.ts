@@ -5,8 +5,7 @@ import { PaymentProviderError } from '../errors';
 import { createTestDb, silentLogger, TestClock } from '../jobs/fixtures';
 import { PlanService } from '../plans';
 import { CheckoutService } from './checkout-service';
-import { promoCodes, type PromoCodeRow } from '../db/schema';
-import { addPlan, addUser } from './fixtures';
+import { addPlan, addPromo, addUser } from './fixtures';
 import { OrderService } from './order-service';
 import { PriceCalculator } from './price-calculator';
 import { PromoService } from './promo-service';
@@ -39,26 +38,6 @@ beforeEach(() => {
 		silentLogger()
 	);
 });
-
-function addPromo(overrides: Partial<PromoCodeRow> = {}): PromoCodeRow {
-	return db
-		.insert(promoCodes)
-		.values({
-			code: 'START30',
-			discountType: 'percent',
-			discountValue: 30,
-			maxUses: null,
-			usedCount: 0,
-			validFrom: null,
-			validUntil: null,
-			isActive: true,
-			createdAt: new Date(clock.now()),
-			archivedAt: null,
-			...overrides
-		})
-		.returning()
-		.get();
-}
 
 describe('CheckoutService.start', () => {
 	it('prices the order from the plan, not from anything a form could say', async () => {
@@ -144,7 +123,7 @@ describe('CheckoutService.start', () => {
 	it('sells at the discounted price when a code checks out', async () => {
 		const user = addUser(db);
 		const plan = addPlan(db, { priceMinor: 499 });
-		addPromo();
+		addPromo(db);
 
 		const started = await checkout.start(user, plan.id, 'START30');
 
@@ -161,7 +140,7 @@ describe('CheckoutService.start', () => {
 	it('records which code bought the discount, so the job can spend it', async () => {
 		const user = addUser(db);
 		const plan = addPlan(db);
-		const promo = addPromo();
+		const promo = addPromo(db);
 
 		await checkout.start(user, plan.id, 'start30');
 
@@ -175,7 +154,7 @@ describe('CheckoutService.start', () => {
 		 */
 		const user = addUser(db);
 		const plan = addPlan(db);
-		addPromo({ isActive: false });
+		addPromo(db, { isActive: false });
 
 		expect(await checkout.start(user, plan.id, 'START30')).toEqual({
 			ok: false,
@@ -198,7 +177,7 @@ describe('CheckoutService.start', () => {
 	it('sells at full price when no code was typed', async () => {
 		const user = addUser(db);
 		const plan = addPlan(db, { priceMinor: 499 });
-		addPromo();
+		addPromo(db);
 
 		await checkout.start(user, plan.id);
 

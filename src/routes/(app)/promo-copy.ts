@@ -22,3 +22,11 @@ export const PROMO_MESSAGES: Record<PromoError, string> = {
 	exhausted: 'Промокод уже разобрали.',
 	already_used: 'Этот промокод вы уже применили.'
 };
+
+/**
+ * What a spent attempt budget says. One limiter counts both screens (CLAUDE.md 2 — five attempts per
+ * ten minutes per person), so they have to say the same thing: two sentences for one budget would
+ * read as two different limits to whoever hit it on one screen and then tried the other.
+ */
+export const promoRateLimitMessage = (retryAfterSec: number): string =>
+	`Слишком много попыток с промокодом. Попробуйте через ${Math.ceil(retryAfterSec / 60)} мин.`;

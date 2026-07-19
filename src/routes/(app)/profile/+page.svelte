@@ -79,6 +79,8 @@
 			</div>
 		</div>
 
+		<PromoBlock result={form} currency={data.currency} />
+
 		<h2 class="mt-7 mb-2 px-1 text-[12px] font-semibold tracking-[.06em] text-muted uppercase">
 			Подписка
 		</h2>
@@ -122,8 +124,6 @@
 				{/snippet}
 			</EmptyState>
 		{/if}
-
-		<PromoBlock result={form} currency={data.currency} />
 
 		{#if data.history.length > 0}
 			<!--

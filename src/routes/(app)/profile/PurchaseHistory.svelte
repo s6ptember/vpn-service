@@ -25,8 +25,10 @@
 
 	const labelOf = (status: OrderStatus) => (status === 'paid' ? null : LABELS[status]);
 
-	// The snapshot is the receipt (tech.md 5): the plan may have been renamed or repriced since, and
-	// this row has to keep describing what was actually bought.
+	/**
+	 * When it happened: the moment the money moved, or — for an attempt that never got that far — the
+	 * moment it was opened. Both are real instants, so both are shown in the reader's own timezone.
+	 */
 	const dateOf = (order: OrderDTO) => order.paidAt ?? order.createdAt;
 </script>
 
@@ -35,6 +37,8 @@
 		{#each orders as order, i (order.id)}
 			<li class={['flex items-center gap-3 px-4 py-3', i > 0 && 'border-t border-line']}>
 				<div class="min-w-0 flex-1">
+					<!-- The snapshot, not the live plan (tech.md 5): a receipt describes what was actually
+					     bought, not what the plan has been renamed or repriced to since. -->
 					<p class="text-[15px] leading-tight font-medium">{order.plan.name}</p>
 					<p class="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-[13px] text-muted">
 						{formatDate(dateOf(order))}

@@ -2,15 +2,9 @@ import { eq } from 'drizzle-orm';
 import { beforeEach, describe, expect, it } from 'vitest';
 import type { PriceQuote } from '$lib/types';
 import type { Db } from '../db/client';
-import {
-	promoCodes,
-	promoRedemptions,
-	type PlanRow,
-	type PromoCodeRow,
-	type UserRow
-} from '../db/schema';
+import { promoCodes, promoRedemptions, type PlanRow, type UserRow } from '../db/schema';
 import { createTestDb, TestClock } from '../jobs/fixtures';
-import { addPlan, addUser } from './fixtures';
+import { addPlan, addPromo, addUser } from './fixtures';
 import { OrderService } from './order-service';
 import { PromoService } from './promo-service';
 import { PromoValidator } from './promo-validator';
@@ -36,26 +30,6 @@ const QUOTE: PriceQuote = {
 	currency: 'usd',
 	promoCode: 'START30'
 };
-
-function addPromo(overrides: Partial<PromoCodeRow> = {}): PromoCodeRow {
-	return db
-		.insert(promoCodes)
-		.values({
-			code: 'START30',
-			discountType: 'percent',
-			discountValue: 30,
-			maxUses: null,
-			usedCount: 0,
-			validFrom: null,
-			validUntil: null,
-			isActive: true,
-			createdAt: new Date(clock.now()),
-			archivedAt: null,
-			...overrides
-		})
-		.returning()
-		.get();
-}
 
 /** An order quoted with the code, left in whatever state the case is about. */
 function addOrder(promoId: number | null, status: 'pending' | 'paid' | 'failed' = 'pending') {
@@ -86,8 +60,9 @@ function addOrder(promoId: number | null, status: 'pending' | 'paid' | 'failed' 
 	return order;
 }
 
-const usedCount = (id: number) =>
-	db.select().from(promoCodes).where(eq(promoCodes.id, id)).get()!.usedCount;
+const promoRow = (id: number) => db.select().from(promoCodes).where(eq(promoCodes.id, id)).get()!;
+
+const usedCount = (id: number) => promoRow(id).usedCount;
 
 const redemptions = () => db.select().from(promoRedemptions).all();
 
@@ -102,7 +77,7 @@ beforeEach(() => {
 
 describe('PromoService.resolve', () => {
 	it('accepts a live code the person has never used', () => {
-		const promo = addPromo();
+		const promo = addPromo(db);
 
 		expect(promos.resolve('START30', user.id)).toEqual({
 			ok: true,
@@ -112,13 +87,13 @@ describe('PromoService.resolve', () => {
 
 	it('finds a code however it was typed', () => {
 		// tech.md 5 stores codes UPPERCASE; nobody types them that way on a phone.
-		addPromo();
+		addPromo(db);
 
 		expect(promos.resolve('  start30  ', user.id).ok).toBe(true);
 	});
 
 	it('refuses a code this person has already redeemed', () => {
-		const promo = addPromo();
+		const promo = addPromo(db);
 		const order = addOrder(promo.id, 'paid');
 		promos.redeem({ promoCodeId: promo.id, userId: user.id, orderId: order.id });
 
@@ -131,7 +106,7 @@ describe('PromoService.resolve', () => {
 		 * without counting the open order somebody could hold two payment pages and pay both — two
 		 * discounts, one of them given away.
 		 */
-		const promo = addPromo();
+		const promo = addPromo(db);
 		addOrder(promo.id, 'pending');
 
 		expect(promos.resolve('START30', user.id)).toEqual({ ok: false, error: 'already_used' });
@@ -139,7 +114,7 @@ describe('PromoService.resolve', () => {
 
 	it('refuses a second checkout while the first is paid and the key is still being made', () => {
 		// Paid and unprovisioned is the same claim on the code, and it never drains.
-		const promo = addPromo();
+		const promo = addPromo(db);
 		addOrder(promo.id, 'paid');
 
 		expect(promos.resolve('START30', user.id)).toEqual({ ok: false, error: 'already_used' });
@@ -147,14 +122,14 @@ describe('PromoService.resolve', () => {
 
 	it('frees the code again once an abandoned order is settled', () => {
 		// Stripe expires the session after 30 minutes and the webhook writes `failed` (tech.md 10).
-		const promo = addPromo();
+		const promo = addPromo(db);
 		addOrder(promo.id, 'failed');
 
 		expect(promos.resolve('START30', user.id).ok).toBe(true);
 	});
 
 	it('counts only this person', () => {
-		const promo = addPromo();
+		const promo = addPromo(db);
 		const other = addUser(db, { telegramId: 700_000_222 });
 		const order = addOrder(promo.id, 'paid');
 		promos.redeem({ promoCodeId: promo.id, userId: user.id, orderId: order.id });
@@ -163,7 +138,7 @@ describe('PromoService.resolve', () => {
 	});
 
 	it('refuses a code that is spent shop-wide', () => {
-		addPromo({ maxUses: 2, usedCount: 2 });
+		addPromo(db, { maxUses: 2, usedCount: 2 });
 
 		expect(promos.resolve('START30', user.id)).toEqual({ ok: false, error: 'exhausted' });
 	});
@@ -171,11 +146,59 @@ describe('PromoService.resolve', () => {
 	it('refuses a code nobody minted', () => {
 		expect(promos.resolve('NOSUCHCODE', user.id)).toEqual({ ok: false, error: 'not_found' });
 	});
+
+	it('holds the last use for the buyer who claimed it first', () => {
+		/**
+		 * The shop-wide half of the same window. `usedCount` moves only at provision time, so without
+		 * counting the claims other people are holding, a `maxUses: 1` code reads as available to
+		 * everybody who asks during the half hour a Stripe session lives — all of them quoted the
+		 * discount, all of them charged, one use sold many times over.
+		 */
+		const promo = addPromo(db, { maxUses: 1 });
+		addOrder(promo.id, 'pending');
+
+		const secondBuyer = addUser(db, { telegramId: 700_000_333 });
+
+		expect(promos.resolve('START30', secondBuyer.id)).toEqual({ ok: false, error: 'exhausted' });
+	});
+
+	it('releases the hold when the first buyer walks away', () => {
+		const promo = addPromo(db, { maxUses: 1 });
+		const abandoned = addOrder(promo.id, 'pending');
+		const secondBuyer = addUser(db, { telegramId: 700_000_333 });
+
+		// Stripe expires the session and the webhook settles the order (tech.md 10).
+		orders.settle(abandoned.id, 'failed');
+
+		expect(promos.resolve('START30', secondBuyer.id).ok).toBe(true);
+	});
+
+	it('counts a redeemed order once, not twice', () => {
+		/**
+		 * A provisioned order has already moved `usedCount`. Counting its claim again would retire a
+		 * two-use code after a single purchase.
+		 */
+		const promo = addPromo(db, { maxUses: 2 });
+		const order = addOrder(promo.id, 'paid');
+		promos.redeem({ promoCodeId: promo.id, userId: user.id, orderId: order.id });
+
+		const secondBuyer = addUser(db, { telegramId: 700_000_333 });
+
+		expect(promos.resolve('START30', secondBuyer.id).ok).toBe(true);
+	});
+
+	it('still tells the person holding the claim that it is theirs', () => {
+		// Their own unsettled order must read as `already_used`, never as a budget they used up.
+		const promo = addPromo(db, { maxUses: 1 });
+		addOrder(promo.id, 'pending');
+
+		expect(promos.resolve('START30', user.id)).toEqual({ ok: false, error: 'already_used' });
+	});
 });
 
 describe('PromoService.redeem', () => {
 	it('writes one redemption and moves the counter once', () => {
-		const promo = addPromo();
+		const promo = addPromo(db);
 		const order = addOrder(promo.id, 'paid');
 
 		expect(promos.redeem({ promoCodeId: promo.id, userId: user.id, orderId: order.id })).toBe(
@@ -191,7 +214,7 @@ describe('PromoService.redeem', () => {
 		 * is retried, and the worker re-runs a job a dying process left `running`. A second increment
 		 * here would burn a use of the code on every retry.
 		 */
-		const promo = addPromo({ maxUses: 10 });
+		const promo = addPromo(db, { maxUses: 10 });
 		const order = addOrder(promo.id, 'paid');
 
 		const first = promos.redeem({ promoCodeId: promo.id, userId: user.id, orderId: order.id });
@@ -204,7 +227,7 @@ describe('PromoService.redeem', () => {
 
 	it('refuses a second order by the same person and leaves the counter alone', () => {
 		// promo_once_per_user, at the level of the database rather than of good intentions (tech.md 10).
-		const promo = addPromo();
+		const promo = addPromo(db);
 		const first = addOrder(promo.id, 'paid');
 		const second = addOrder(promo.id, 'paid');
 
@@ -223,7 +246,7 @@ describe('PromoService.redeem', () => {
 		 * walked to the payment page, and somebody else took the last use before they paid. The
 		 * counter must not climb past maxUses, and the redemption row must not survive uncounted.
 		 */
-		const promo = addPromo({ maxUses: 1, usedCount: 1 });
+		const promo = addPromo(db, { maxUses: 1, usedCount: 1 });
 		const order = addOrder(promo.id, 'paid');
 
 		expect(promos.redeem({ promoCodeId: promo.id, userId: user.id, orderId: order.id })).toBe(
@@ -234,7 +257,7 @@ describe('PromoService.redeem', () => {
 	});
 
 	it('spends the last use when it is still there', () => {
-		const promo = addPromo({ maxUses: 3, usedCount: 2 });
+		const promo = addPromo(db, { maxUses: 3, usedCount: 2 });
 		const order = addOrder(promo.id, 'paid');
 
 		expect(promos.redeem({ promoCodeId: promo.id, userId: user.id, orderId: order.id })).toBe(
@@ -268,7 +291,7 @@ describe('PromoService admin CRUD', () => {
 
 	it('refuses a code somebody already minted', () => {
 		// `code` is unique (tech.md 5); two campaigns reaching for one obvious name is not a 500.
-		addPromo({ code: 'SUMMER' });
+		addPromo(db, { code: 'SUMMER' });
 
 		expect(promos.create(input)).toEqual({ ok: false, error: 'code_taken' });
 	});
@@ -278,7 +301,7 @@ describe('PromoService admin CRUD', () => {
 		 * `usedCount` is the ledger `maxUses` is compared against. A form that could set it would let
 		 * an admin hand a spent campaign back to customers without meaning to.
 		 */
-		const promo = addPromo({ maxUses: 10, usedCount: 4 });
+		const promo = addPromo(db, { maxUses: 10, usedCount: 4 });
 
 		const updated = promos.update(promo.id, { ...input, code: 'START30' });
 
@@ -286,7 +309,7 @@ describe('PromoService admin CRUD', () => {
 	});
 
 	it('lets an edit retire a code by lowering the limit under what is spent', () => {
-		const promo = addPromo({ maxUses: 10, usedCount: 4 });
+		const promo = addPromo(db, { maxUses: 10, usedCount: 4 });
 
 		promos.update(promo.id, { ...input, code: 'START30', maxUses: 4 });
 
@@ -294,21 +317,21 @@ describe('PromoService admin CRUD', () => {
 	});
 
 	it('refuses to rename a code onto one that is taken', () => {
-		addPromo({ code: 'SUMMER' });
-		const other = addPromo({ code: 'START30' });
+		addPromo(db, { code: 'SUMMER' });
+		const other = addPromo(db, { code: 'START30' });
 
 		expect(promos.update(other.id, input)).toEqual({ ok: false, error: 'code_taken' });
 	});
 
 	it('lets an edit keep its own code', () => {
 		// The uniqueness check must not see the row's own code as a clash with itself.
-		const promo = addPromo({ code: 'SUMMER' });
+		const promo = addPromo(db, { code: 'SUMMER' });
 
 		expect(promos.update(promo.id, { ...input, discountValue: 300 }).ok).toBe(true);
 	});
 
 	it('archives instead of deleting, and stops the code working', () => {
-		const promo = addPromo();
+		const promo = addPromo(db);
 
 		expect(promos.archive(promo.id).ok).toBe(true);
 		// The row survives — orders reference it — and refuses every customer from now on.
@@ -318,7 +341,7 @@ describe('PromoService admin CRUD', () => {
 
 	it('refuses to edit an archived code', () => {
 		// Archiving is the delete path and must be final: an edit would put a retired code back.
-		const promo = addPromo();
+		const promo = addPromo(db);
 		promos.archive(promo.id);
 
 		expect(promos.update(promo.id, { ...input, code: 'START30' })).toEqual({
@@ -328,17 +351,26 @@ describe('PromoService admin CRUD', () => {
 	});
 
 	it('archives idempotently, so a double-submitted form rewrites no history', () => {
-		const promo = addPromo();
-		const first = promos.archive(promo.id);
-		const second = promos.archive(promo.id);
+		/**
+		 * Asserted on the column rather than on the view: `PromoAdminView` carries no `archivedAt`, so
+		 * comparing two views would pass even if the second call moved the date. The clock is advanced
+		 * between the calls for the same reason — a frozen one would hide a rewrite entirely.
+		 */
+		const promo = addPromo(db);
+		promos.archive(promo.id);
 
-		expect(first).toEqual(second);
+		const archivedAt = promoRow(promo.id).archivedAt?.getTime();
+		clock.advance(60_000);
+		promos.archive(promo.id);
+
+		expect(archivedAt).toBe(promoRow(promo.id).archivedAt?.getTime());
+		expect(archivedAt).not.toBeUndefined();
 	});
 
 	it('keeps archived codes out of the admin list and switched-off ones in it', () => {
-		const live = addPromo({ code: 'LIVE' });
-		addPromo({ code: 'HIDDEN', isActive: false });
-		const retired = addPromo({ code: 'RETIRED' });
+		const live = addPromo(db, { code: 'LIVE' });
+		addPromo(db, { code: 'HIDDEN', isActive: false });
+		const retired = addPromo(db, { code: 'RETIRED' });
 		promos.archive(retired.id);
 
 		const listed = promos.listEditable().map((promo) => promo.code);

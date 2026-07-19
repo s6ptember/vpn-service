@@ -116,21 +116,20 @@ describe('PromoValidator.check', () => {
 		expect(outcome(broken, 1)).toBe('inactive');
 	});
 
-	it('is pure: no clock of its own, so the same arguments always answer the same', () => {
+	it('reads the clock it is handed, and no other', () => {
+		/**
+		 * The property that makes every other test here trustworthy: `now` is a parameter, so a code
+		 * expiring at NOW is live for every argument up to NOW and dead for every one after it. A
+		 * validator that reached for `Date.now()` instead would answer the same thing for all of them
+		 * — and comparing two calls against each other would not notice, because that passes for any
+		 * deterministic function, including a wrong one.
+		 */
 		fc.assert(
-			fc.property(
-				fc.integer({ min: 0, max: 5 }),
-				fc.integer({ min: NOW - 10 * DAY, max: NOW + 10 * DAY }),
-				fc.option(fc.integer({ min: 1, max: 3 }), { nil: null }),
-				fc.integer({ min: 0, max: 3 }),
-				(redemptions, now, maxUses, usedCount) => {
-					const row = promoRow({ maxUses, usedCount, validUntil: new Date(NOW) });
+			fc.property(fc.integer({ min: NOW - 10 * DAY, max: NOW + 10 * DAY }), (now) => {
+				const row = promoRow({ validUntil: new Date(NOW) });
 
-					expect(validator.check(row, redemptions, now)).toEqual(
-						validator.check(row, redemptions, now)
-					);
-				}
-			)
+				expect(validator.check(row, 0, now).ok).toBe(now <= NOW);
+			})
 		);
 	});
 
