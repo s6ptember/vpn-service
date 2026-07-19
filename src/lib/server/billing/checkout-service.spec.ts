@@ -8,6 +8,8 @@ import { CheckoutService } from './checkout-service';
 import { addPlan, addUser } from './fixtures';
 import { OrderService } from './order-service';
 import { PriceCalculator } from './price-calculator';
+import { PromoService } from './promo-service';
+import { PromoValidator } from './promo-validator';
 
 /**
  * A5's acceptance criteria (tech.md 16, 10 steps 1-4): the server recomputes the price, writes an
@@ -31,6 +33,7 @@ beforeEach(() => {
 		orders,
 		new PlanService(db, 'usd', { now: clock.now }),
 		new PriceCalculator(),
+		new PromoService(db, new PromoValidator(), orders, { now: clock.now }),
 		payments,
 		silentLogger()
 	);

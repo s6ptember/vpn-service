@@ -1,7 +1,7 @@
 import { eq } from 'drizzle-orm';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { UserService } from '$lib/server/auth/user-service';
-import { OrderService, PriceCalculator } from '$lib/server/billing';
+import { OrderService, PriceCalculator, PromoService, PromoValidator } from '$lib/server/billing';
 import { addPlan, addUser } from '$lib/server/billing/fixtures';
 import { FAKE_SUB_ORIGIN, FakeMarzban } from '$lib/server/clients/marzban';
 import type { Db } from '$lib/server/db/client';
@@ -31,6 +31,7 @@ import { SubscriptionProvisionHandler } from './subscription-provision';
 let db: Db;
 let clock: TestClock;
 let orders: OrderService;
+let promos: PromoService;
 let subscriptions: SubscriptionService;
 let marzban: FakeMarzban;
 let queue: JobQueue;
@@ -79,6 +80,7 @@ beforeEach(() => {
 	db = createTestDb();
 	clock = new TestClock();
 	orders = new OrderService(db, { now: clock.now });
+	promos = new PromoService(db, new PromoValidator(), orders, { now: clock.now });
 	subscriptions = new SubscriptionService(db, { now: clock.now });
 	marzban = new FakeMarzban();
 	queue = new JobQueue(db, clock.now);
@@ -86,6 +88,7 @@ beforeEach(() => {
 		orders,
 		subscriptions,
 		new UserService(db, { now: clock.now }),
+		promos,
 		marzban,
 		queue,
 		silentLogger(),
@@ -256,6 +259,7 @@ describe('SubscriptionProvisionHandler', () => {
 			orders,
 			subscriptions,
 			new UserService(db, { now: clock.now }),
+			promos,
 			racing,
 			queue,
 			silentLogger(),

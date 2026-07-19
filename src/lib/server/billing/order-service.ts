@@ -1,4 +1,4 @@
-import { and, asc, desc, eq } from 'drizzle-orm';
+import { and, asc, desc, eq, inArray, sql } from 'drizzle-orm';
 import { nanoid } from 'nanoid';
 import type { PlanSnapshot, PriceQuote } from '$lib/types';
 import type { Db } from '../db/client';
@@ -150,6 +150,49 @@ export class OrderService {
 			.where(and(eq(orders.userId, userId), eq(orders.status, 'paid')))
 			.orderBy(asc(orders.paidAt), asc(orders.id))
 			.all();
+	}
+
+	/**
+	 * A12 — the purchase history, newest first. `createdAt` rather than `paidAt` because this list
+	 * shows every attempt, paid or not, and an unpaid order has no payment date to sort on; the
+	 * (userId, createdAt) index is on exactly this pair.
+	 *
+	 * Capped by the caller. Nobody scrolls a thousand receipts on a phone, and an unbounded read
+	 * grows with the best customer the shop has.
+	 */
+	listForUser(userId: number, limit: number): OrderRow[] {
+		return this.db
+			.select()
+			.from(orders)
+			.where(eq(orders.userId, userId))
+			.orderBy(desc(orders.createdAt), desc(orders.id))
+			.limit(limit)
+			.all();
+	}
+
+	/**
+	 * This person's orders quoted with `promoCodeId` that have not been settled against them yet:
+	 * still awaiting payment, or paid and not yet provisioned.
+	 *
+	 * PromoService counts these alongside real redemptions when it prices a checkout. The redemption
+	 * row is written by the provision job, well after the money lands, so without this an order on a
+	 * payment page — or one already paid and waiting for the worker — is invisible, and the same code
+	 * could be spent twice. See PromoService.resolve.
+	 */
+	countUnsettledWithPromo(userId: number, promoCodeId: number): number {
+		const row = this.db
+			.select({ count: sql<number>`count(*)` })
+			.from(orders)
+			.where(
+				and(
+					eq(orders.userId, userId),
+					eq(orders.promoCodeId, promoCodeId),
+					inArray(orders.status, ['pending', 'paid'])
+				)
+			)
+			.get();
+
+		return row?.count ?? 0;
 	}
 
 	/** The order the person is most likely looking at right now. Drives the "Ждём оплату" screen. */

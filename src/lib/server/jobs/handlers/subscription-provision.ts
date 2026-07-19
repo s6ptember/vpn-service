@@ -1,7 +1,8 @@
 import * as v from 'valibot';
 import type { UserService } from '$lib/server/auth/user-service';
-import type { OrderService } from '$lib/server/billing';
+import type { OrderService, PromoService } from '$lib/server/billing';
 import type { MarzbanApi, MarzbanUser } from '$lib/server/clients/marzban';
+import type { OrderRow } from '$lib/server/db/schema';
 import { MarzbanError } from '$lib/server/errors';
 import type { Logger } from '$lib/server/log';
 import { foldTerms, isActiveAt, type PaidTerm } from '$lib/server/subscriptions';
@@ -27,6 +28,8 @@ const DATE_FORMAT = new Intl.DateTimeFormat('ru-RU', {
 
 export interface SubscriptionProvisionOptions {
 	now?: () => number;
+	/** Where a promo that overspent is reported. Injected, never read from config here. */
+	adminChatId?: number;
 }
 
 /**
@@ -56,11 +59,13 @@ export class SubscriptionProvisionHandler extends JobHandler<'subscription.provi
 	readonly schema = PayloadSchema;
 
 	private readonly now: () => number;
+	private readonly adminChatId: number | null;
 
 	constructor(
 		private readonly orders: OrderService,
 		private readonly subscriptions: SubscriptionService,
 		private readonly users: UserService,
+		private readonly promos: PromoService,
 		private readonly marzban: MarzbanApi,
 		private readonly jobs: JobQueue,
 		private readonly log: Logger,
@@ -68,6 +73,7 @@ export class SubscriptionProvisionHandler extends JobHandler<'subscription.provi
 	) {
 		super();
 		this.now = opts.now ?? Date.now;
+		this.adminChatId = opts.adminChatId ?? null;
 	}
 
 	async handle(payload: v.InferOutput<typeof PayloadSchema>): Promise<void> {
@@ -110,7 +116,63 @@ export class SubscriptionProvisionHandler extends JobHandler<'subscription.provi
 			expiresAt: term.expiresAtMs
 		});
 
+		this.#redeemPromo(order);
 		this.#announce(user.telegramId, order.id, term.expiresAtMs, marzbanUser.subscriptionUrl);
+	}
+
+	/**
+	 * tech.md 6 makes redeeming the code an effect of this job, not of the webhook: the discount is
+	 * spent when the access it bought is granted, so a payment that never provisions never burns a
+	 * use. It runs after the subscription is written for the same reason — a Marzban outage that
+	 * fails this job repeatedly must not eat the code on every attempt.
+	 *
+	 * Idempotent: PromoService refuses a second redemption for the same order or the same person, and
+	 * the counter moves only when a row is written.
+	 */
+	#redeemPromo(order: OrderRow): void {
+		if (order.promoCodeId === null) return;
+
+		const outcome = this.promos.redeem({
+			promoCodeId: order.promoCodeId,
+			userId: order.userId,
+			orderId: order.id
+		});
+
+		if (outcome === 'redeemed') {
+			// The id, never the code itself: this line ends up in stdout, and a working promo code is a
+			// bearer secret (CLAUDE.md 2).
+			this.log.info('promo_redeemed', { orderId: order.id, promoCodeId: order.promoCodeId });
+			return;
+		}
+
+		if (outcome === 'already_redeemed') return;
+
+		/**
+		 * The code ran out between the quote and the payment — somebody else took the last use while
+		 * this person was on the payment page.
+		 *
+		 * Access is granted anyway, and that is deliberate: the money is already taken, and refusing
+		 * the subscription over a discount the shop itself quoted would be the far worse failure. What
+		 * is lost is one use beyond `maxUses`, so the admin hears about it and the ledger stays honest.
+		 */
+		this.log.warn('promo_overspent', {
+			orderId: order.id,
+			userId: order.userId,
+			promoCodeId: order.promoCodeId
+		});
+
+		if (this.adminChatId === null) return;
+
+		const dedupeKey = `promo:overspent:${order.id}`;
+		this.jobs.enqueue(
+			'telegram.send_message',
+			{
+				chatId: this.adminChatId,
+				text: `Заказ ${order.publicId} оплачен со скидкой, но лимит промокода уже был выбран. Доступ выдан, использование не засчитано.`,
+				dedupeKey
+			},
+			`tg:${dedupeKey}`
+		);
 	}
 
 	/**

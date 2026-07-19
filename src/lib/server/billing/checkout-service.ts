@@ -1,16 +1,21 @@
-import type { PlanSnapshot, Result } from '$lib/types';
+import type { PlanSnapshot, PromoCodeDTO, PromoError, Result } from '$lib/types';
 import type { UserRow } from '../db/schema';
 import type { PaymentProvider } from '../clients/payments';
 import type { Logger } from '../log';
 import type { PlanService } from '../plans';
 import type { OrderService } from './order-service';
 import type { PriceCalculator } from './price-calculator';
+import type { PromoService } from './promo-service';
 
 /**
- * The plan is gone, hidden or archived — a stale card, not an attack and not a bug, so it comes
- * back as a Result for the page to phrase (CLAUDE.md 3).
+ * Every way a checkout can be refused for a reason the person can act on — a stale card, a code that
+ * has run out — rather than because something broke. All of them are Results for the page to phrase
+ * (CLAUDE.md 3); a provider that fell over still throws.
+ *
+ * Kept a flat string union so the route can map it with one exhaustive `Record<CheckoutError, …>`:
+ * adding an arm without deciding what it says to the person then fails to compile.
  */
-export type CheckoutError = 'plan_unavailable';
+export type CheckoutError = 'plan_unavailable' | `promo_${PromoError}`;
 
 export interface CheckoutStarted {
 	/** Hosted checkout page. The client hands it to WebApp.openLink; it is never opened in-frame. */
@@ -30,11 +35,20 @@ export class CheckoutService {
 		private readonly orders: OrderService,
 		private readonly plans: PlanService,
 		private readonly prices: PriceCalculator,
+		private readonly promos: PromoService,
 		private readonly payments: PaymentProvider,
 		private readonly log: Logger
 	) {}
 
-	async start(user: UserRow, planId: number): Promise<Result<CheckoutStarted, CheckoutError>> {
+	/**
+	 * `promoCode` is a name, not a discount. What it is worth is read from the row it names and
+	 * checked against this person's history — the form has no way to say how much anything costs.
+	 */
+	async start(
+		user: UserRow,
+		planId: number,
+		promoCode?: string
+	): Promise<Result<CheckoutStarted, CheckoutError>> {
 		const plan = this.plans.findSellable(planId);
 		if (!plan) return { ok: false, error: 'plan_unavailable' };
 
@@ -46,16 +60,30 @@ export class CheckoutService {
 			trafficLimitBytes: plan.trafficLimitBytes
 		};
 
-		// Promo codes arrive in A10. Until then every quote is the plain price, and the column that
-		// records the discount is already here so the shape does not change under them.
-		const quote = this.prices.quote(snapshot, null);
+		let promo: PromoCodeDTO | null = null;
+
+		if (promoCode) {
+			const resolved = this.promos.resolve(promoCode, user.id);
+
+			/**
+			 * A refused code stops the purchase instead of quietly selling at full price. Somebody who
+			 * typed a code is buying because of it: charging them the undiscounted amount and letting
+			 * them find out on the payment page is the one outcome here that costs their trust.
+			 */
+			if (!resolved.ok) return { ok: false, error: `promo_${resolved.error}` };
+
+			promo = resolved.value;
+		}
+
+		const quote = this.prices.quote(snapshot, promo);
 
 		const order = this.orders.create({
 			userId: user.id,
 			planId: plan.id,
 			plan: snapshot,
 			quote,
-			provider: this.payments.id
+			provider: this.payments.id,
+			promoCodeId: promo?.id ?? null
 		});
 
 		let checkout: { url: string; sessionId: string };
@@ -77,11 +105,14 @@ export class CheckoutService {
 
 		this.orders.attachSession(order.id, checkout.sessionId);
 
-		// Ids only, and no url: the checkout link is a bearer token for a payment page.
+		// Ids only, and no url: the checkout link is a bearer token for a payment page. The promo is
+		// logged by id for the same reason — a code is a bearer secret too, and redact() masks by key
+		// name, so the string itself must never be handed to the logger.
 		this.log.info('checkout_created', {
 			orderId: order.id,
 			userId: user.id,
 			planId: plan.id,
+			promoCodeId: promo?.id ?? null,
 			finalPriceMinor: quote.finalPriceMinor
 		});
 
