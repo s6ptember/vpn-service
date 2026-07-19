@@ -27,11 +27,16 @@
 	let checking = $state(false);
 
 	/**
-	 * A message stands only while the field still holds exactly what the server answered about.
-	 * Editing the code retires it — an answer that survives the correction tells somebody their fix
-	 * did not take, and it needs no extra state to notice.
+	 * A message stands only while the field still holds the code the server answered about. Editing
+	 * it retires the answer — one that survives the correction tells somebody their fix did not take.
+	 *
+	 * Both sides are normalised the way the schema normalises them, and that is not cosmetic: a
+	 * refusal echoes back exactly what was typed, so comparing a raw `start30` against an upper-cased
+	 * `START30` would hide every error message the moment somebody typed in lower case.
 	 */
-	let answer = $derived(result && code.trim().toUpperCase() === result.code ? result : null);
+	const normalise = (value: string) => value.trim().toUpperCase();
+
+	let answer = $derived(result && normalise(code) === normalise(result.code) ? result : null);
 </script>
 
 <h2 class="mt-7 mb-2 px-1 text-[12px] font-semibold tracking-[.06em] text-muted uppercase">

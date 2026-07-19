@@ -107,7 +107,9 @@ test.describe.serial('buying a subscription', () => {
 		await page.getByRole('link', { name: 'Открыть профиль' }).click();
 
 		await expect(page.getByRole('heading', { name: 'Профиль', level: 1 })).toBeVisible();
-		await expect(page.getByText(PLAN_NAME, { exact: true })).toBeVisible();
+		// First on the page, which is the subscription card: A12 put a purchase history below it, and
+		// every receipt in that list names a plan too.
+		await expect(page.getByText(PLAN_NAME, { exact: true }).first()).toBeVisible();
 		await expect(page.getByText('Осталось 30 дней')).toBeVisible();
 		await expect(page.getByText(/Действует до/)).toBeVisible();
 
