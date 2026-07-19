@@ -4,9 +4,22 @@ import { DAY_MS, daysLeft, foldTerms, isActiveAt, type PaidTerm } from './expiry
 
 /**
  * The invariants are tech.md's, not the implementation's: 10.9 ("продление активной подписки
- * прибавляет дни, а не обнуляет их"), 17.3 ("30 дней при активных 12 даёт 42") and section 6's
- * demand that a job handler be idempotent on its own. The last one is why determinism is tested
- * here at all — it is the property the provision handler leans its whole correctness on.
+ * прибавляет дни, а не обнуляет их") and 17.3 ("30 дней при активных 12 даёт 42").
+ *
+ * Two of the specs below — the ones that pin the END of a single term — encode the anchor rather
+ * than only the rule, and that anchor is the subject of an open CONTRACT GAP: tech.md 10.9 writes
+ * the formula as `max(now, currentExpiresAt) + days`, which cannot be idempotent because `now`
+ * moves between a job and its retry, while tech.md 6 demands idempotency without exception. This
+ * code resolves the conflict towards `paidAt`, and those two specs say so out loud so that nobody
+ * reads them as the frozen contract before the lead has ruled.
+ *
+ * In practice the two formulas agree: paidAt is stamped by our own clock when the webhook lands,
+ * and the provision job runs within seconds of it. They diverge only by however long the queue was
+ * behind — and paidAt is the reading that does not charge that delay to the customer.
+ *
+ * Idempotency itself is NOT tested here. `foldTerms(x) === foldTerms(x)` is true of every pure
+ * function and would prove nothing; the real test runs the handler twice against a real database in
+ * jobs/handlers/subscription-provision.spec.ts.
  */
 
 const JULY_2026 = 1_784_000_000_000;
@@ -24,19 +37,11 @@ const history = (constraints: { minLength?: number } = {}) =>
 		.map((terms) => [...terms].sort((a, b) => a.paidAtMs - b.paidAtMs));
 
 describe('foldTerms', () => {
-	it('gives the same answer every time it is asked', () => {
-		// The whole idempotency story of subscription.provision rests on this one property.
-		fc.assert(
-			fc.property(history(), (terms) => {
-				expect(foldTerms(terms)).toEqual(foldTerms(terms));
-			})
-		);
-	});
-
 	it('has nothing to say about a person who never paid', () => {
 		expect(foldTerms([])).toBeNull();
 	});
 
+	// Anchored on paidAt: the open CONTRACT GAP above, not the frozen wording of tech.md 10.9.
 	it('ends a single purchase exactly its duration after the payment', () => {
 		fc.assert(
 			fc.property(term(), (single) => {
@@ -80,6 +85,7 @@ describe('foldTerms', () => {
 		);
 	});
 
+	// Same caveat: the RULE (a lapsed subscription does not backdate) is tech.md's; the anchor is the gap's.
 	it('restarts from the payment when the subscription had already lapsed', () => {
 		fc.assert(
 			fc.property(history({ minLength: 1 }), fc.integer({ min: 1, max: 365 }), (terms, days) => {
