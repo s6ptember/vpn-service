@@ -23,6 +23,23 @@
 	/** An answer belongs to exactly one form; every other block stays quiet. */
 	const answerFor = (target: number | null) => (form?.target === target ? form : null);
 
+	let listed = $derived(new Set(data.plans.map((plan) => plan.id)));
+
+	/**
+	 * Whether the block that owns the answer is on screen to show it. Archiving is the case that
+	 * needs this: the plan it reports on is gone from the list by the time the answer arrives, so
+	 * without a page-level line the admin would click "В архив" and see nothing happen at all.
+	 */
+	let answerHasHome = $derived(
+		form === null || form === undefined
+			? true
+			: form.target === null
+				? creating
+				: listed.has(form.target)
+	);
+
+	let banner = $derived(answerHasHome ? null : (form?.message ?? null));
+
 	function askArchive(plan: PlanDTO) {
 		archiving = plan;
 		confirmOpen = true;
@@ -35,6 +52,10 @@
 
 <div class="px-4 pt-[max(16px,env(safe-area-inset-top))] pb-28">
 	<h1 class="text-[28px] font-bold tracking-[-.02em]">Админка</h1>
+
+	{#if banner}
+		<p class="mt-4 rounded-card bg-surface p-4 text-[14px]" role="status">{banner}</p>
+	{/if}
 
 	<div class="mt-5 flex items-center justify-between gap-3">
 		<h2 class="px-1 text-[12px] font-semibold tracking-[.06em] text-muted uppercase">Тарифы</h2>
