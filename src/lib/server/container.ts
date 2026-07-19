@@ -1,5 +1,8 @@
 import { dev } from '$app/environment';
+import { InitDataValidator } from './auth/init-data';
 import { SessionService } from './auth/session';
+import { TelegramAuthService } from './auth/telegram-auth';
+import { UserService } from './auth/user-service';
 import { FakeMarzban, MarzbanHttp, type MarzbanApi } from './clients/marzban';
 import { FakePayments, StripePayments, type PaymentProvider } from './clients/payments';
 import { FakeTelegram, TelegramHttp, type TelegramApi } from './clients/telegram';
@@ -10,6 +13,7 @@ import { JobQueue } from './jobs/queue';
 import { JobWorker } from './jobs/worker';
 import { log } from './log';
 import { PlanService } from './plans';
+import { RateLimiter } from './rate-limit';
 
 /**
  * Composition root: the ONE place that picks an implementation. Nothing below imports a sibling
@@ -54,6 +58,24 @@ export const sessions = new SessionService(db, {
 	ttlDays: config.SESSION_TTL_DAYS,
 	adminChatId: config.ADMIN_CHAT_ID
 });
+
+export const users = new UserService(db);
+
+/**
+ * tech.md 2: the initData exchange is capped at 10 per minute per IP. The counter is stateful, but
+ * it is infrastructure rather than request data — nothing in it belongs to one person, and one
+ * replica (tech.md 3) is what lets it live in this process.
+ */
+const initDataLimiter = new RateLimiter({ limit: 10, windowMs: 60_000 });
+
+export const telegramAuth = new TelegramAuthService(
+	new InitDataValidator({
+		botToken: config.TELEGRAM_BOT_TOKEN,
+		maxAgeSec: config.INIT_DATA_MAX_AGE_SEC
+	}),
+	users,
+	initDataLimiter
+);
 
 export const plans = new PlanService(db);
 
