@@ -128,9 +128,18 @@ test.describe.serial('admin: plan CRUD', () => {
 		await form.getByLabel('Название').fill(created);
 		await form.getByLabel('Подпись на карточке').fill('Только для теста');
 		await form.getByLabel('Срок, дней').fill('1');
-		await form.getByLabel('Цена, минорные единицы').fill('9999');
 		await form.getByLabel('Трафик, ГБ').fill('10');
 		await form.getByLabel('Порядок').fill('99');
+
+		// A rejected attempt first: the form must come back holding what was typed, or fixing one
+		// field would mean retyping six.
+		await form.getByLabel('Цена, минорные единицы').fill('1');
+		await form.getByRole('button', { name: 'Создать тариф' }).click();
+
+		await expect(form.getByText(/Цена: не меньше 50/)).toBeVisible();
+		await expect(form.getByLabel('Название')).toHaveValue(created);
+
+		await form.getByLabel('Цена, минорные единицы').fill('9999');
 
 		// The form previews what the customer will read, so nobody types dollars into a cents field.
 		await expect(form.getByText('99,99')).toBeVisible();
@@ -139,6 +148,10 @@ test.describe.serial('admin: plan CRUD', () => {
 
 		await expect(page.getByText(`Тариф «${created}» создан.`)).toBeVisible();
 		await expect(page.getByRole('heading', { name: created, level: 3 })).toBeVisible();
+
+		// And once it saved, it blanks — otherwise the next click creates the same plan twice.
+		await expect(form.getByLabel('Название')).toHaveValue('');
+		await expect(form.getByLabel('Срок, дней')).toHaveValue('30');
 
 		// The server owns the price and the currency: 9999 minor units is what the customer sees.
 		await page.goto('/');

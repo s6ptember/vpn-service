@@ -66,6 +66,15 @@
 
 	let saving = $state(false);
 
+	/**
+	 * A message stands only while the input still holds exactly what the server rejected. Editing
+	 * the field retires it — an error that survives the fix tells the admin their correction did not
+	 * take, and it needs no extra state to notice: the echo is the submitted value.
+	 */
+	type TextField = Exclude<keyof Fields, 'isActive'>;
+	const errorFor = (key: TextField) =>
+		errors[key] && fields[key] === (values[key] ?? '') ? errors[key] : undefined;
+
 	// Only digits reach the schema, so anything else is not a price yet and previews nothing.
 	let pricePreview = $derived(
 		/^\d+$/.test(fields.priceMinor.trim()) ? Number(fields.priceMinor) : null
@@ -102,7 +111,7 @@
 		label="Название"
 		maxlength={64}
 		required
-		error={errors.name}
+		error={errorFor('name')}
 		placeholder="30 дней"
 	/>
 
@@ -111,7 +120,7 @@
 		name="description"
 		label="Подпись на карточке"
 		maxlength={200}
-		error={errors.description}
+		error={errorFor('description')}
 		placeholder="Обычный выбор"
 	/>
 
@@ -122,7 +131,7 @@
 			label="Срок, дней"
 			inputmode="numeric"
 			required
-			error={errors.durationDays}
+			error={errorFor('durationDays')}
 		/>
 
 		<Input
@@ -131,7 +140,7 @@
 			label="Трафик, ГБ"
 			inputmode="numeric"
 			required
-			error={errors.trafficLimitGib}
+			error={errorFor('trafficLimitGib')}
 		/>
 
 		<div>
@@ -141,9 +150,9 @@
 				label="Цена, минорные единицы"
 				inputmode="numeric"
 				required
-				error={errors.priceMinor}
+				error={errorFor('priceMinor')}
 			/>
-			{#if pricePreview !== null && !errors.priceMinor}
+			{#if pricePreview !== null && !errorFor('priceMinor')}
 				<!-- Minor units are what the column holds; this line is what the customer will read. -->
 				<p class="mt-2 px-1 text-[13px] text-muted">
 					= <Money minor={pricePreview} {currency} />
@@ -157,7 +166,7 @@
 			label="Порядок"
 			inputmode="numeric"
 			required
-			error={errors.sortOrder}
+			error={errorFor('sortOrder')}
 		/>
 	</div>
 
