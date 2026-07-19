@@ -121,6 +121,22 @@ describe('SubscriptionReader.forUser', () => {
 		expect(reader.forUser(user.id).awaitingKey).toBe(true);
 	});
 
+	it('keeps waiting when the renewal is SHORTER than what is left on the clock', () => {
+		// The case that breaks any test against the latest order's own duration: the row already sits
+		// past `paidAt + 7 days` on the strength of the term still running, so that arithmetic would
+		// call the key delivered before the job had touched anything.
+		const first = pay(90);
+		provision(first.paidAt!.getTime() + 90 * DAY_MS);
+
+		pay(7);
+
+		expect(reader.forUser(user.id).awaitingKey).toBe(true);
+
+		// And it stops waiting the moment the job writes the folded term.
+		provision(first.paidAt!.getTime() + 97 * DAY_MS);
+		expect(reader.forUser(user.id).awaitingKey).toBe(false);
+	});
+
 	it('has nothing to wait for when the last order was never paid', () => {
 		orders.create({
 			userId: user.id,

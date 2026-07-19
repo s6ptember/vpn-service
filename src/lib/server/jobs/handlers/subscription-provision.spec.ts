@@ -225,6 +225,51 @@ describe('SubscriptionProvisionHandler', () => {
 		expect(subscriptionRow()!.expiresAt.getTime()).toBe(clock.now() + 30 * DAY_MS);
 	});
 
+	it('recovers when createUser loses the race and the panel answers 409', async () => {
+		// The branch the seeded test above cannot reach: getUser says the user is absent, so the
+		// handler calls createUser, and by then somebody else has created it.
+		const username = `tg_${user.telegramId}`;
+		class RacingMarzban extends FakeMarzban {
+			#hidden = true;
+			override async getUser(name: string) {
+				if (this.#hidden) {
+					this.#hidden = false;
+					// Arrive after our lookup, before our create: exactly the race the catch exists for.
+					this.seed([
+						{
+							username,
+							status: 'active',
+							expiresAtMs: clock.now() + DAY_MS,
+							usedTrafficBytes: 0,
+							subscriptionUrl: `${FAKE_SUB_ORIGIN}/sub/${username}`,
+							links: []
+						}
+					]);
+					return null;
+				}
+				return super.getUser(name);
+			}
+		}
+
+		const racing = new RacingMarzban();
+		const racingHandler = new SubscriptionProvisionHandler(
+			orders,
+			subscriptions,
+			new UserService(db, { now: clock.now }),
+			racing,
+			queue,
+			silentLogger(),
+			{ now: clock.now }
+		);
+
+		const order = payFor(30);
+		await racingHandler.handle({ orderId: order.id });
+
+		expect((await racing.getUser(username))!.expiresAtMs).toBe(clock.now() + 30 * DAY_MS);
+		expect(subscriptionRow()!.expiresAt.getTime()).toBe(clock.now() + 30 * DAY_MS);
+		expect(subscriptionRow()!.marzbanUsername).toBe(username);
+	});
+
 	it('writes nothing when the panel is down, so the retry starts from a clean slate', async () => {
 		const order = payFor(30);
 		marzban.failNext(500);

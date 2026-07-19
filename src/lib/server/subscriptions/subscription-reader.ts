@@ -1,7 +1,7 @@
 import type { OrderDTO, SubscriptionDTO } from '$lib/types';
 import { toOrderDTO, type OrderService } from '../billing';
 import type { PlanService } from '../plans';
-import { DAY_MS } from './expiry';
+import { foldTerms, type PaidTerm } from './expiry';
 import { toSubscriptionDTO } from './mapper';
 import type { SubscriptionService } from './subscription-service';
 
@@ -60,21 +60,55 @@ export class SubscriptionReader {
 
 		const latestOrder = latest ? toOrderDTO(latest) : null;
 
-		return { subscription, latestOrder, awaitingKey: awaitingKey(subscription, latestOrder) };
+		return {
+			subscription,
+			latestOrder,
+			awaitingKey: this.#awaitingKey(userId, subscription, latestOrder)
+		};
 	}
-}
 
-/**
- * True while a paid order has not yet reached the subscription row.
- *
- * The test is arithmetic rather than a flag, because there is no column to hold a flag: under the
- * expiry fold (expiry.ts) a provisioned order always leaves `expiresAt` at least its own duration
- * past its payment — exactly that for a first purchase, strictly more for a renewal. So the moment
- * the row satisfies this, the job has run.
- */
-function awaitingKey(subscription: SubscriptionDTO | null, order: OrderDTO | null): boolean {
-	if (order?.status !== 'paid' || order.paidAt === null) return false;
-	if (!subscription) return true;
+	/**
+	 * True while a paid order has not yet reached the subscription row.
+	 *
+	 * The test is arithmetic rather than a flag, because there is no column to hold a flag: the
+	 * schema is frozen (tech.md 15) and carries nothing marking which order was last provisioned.
+	 * So the reader recomputes what the job would write — the same fold over the same paid orders
+	 * (expiry.ts) — and compares. `subscription.provision` overwrites the row with exactly that
+	 * value, so the row matches the fold if and only if the job has caught up.
+	 *
+	 * It has to be the whole fold, not the latest order's own duration: `foldTerms` extends from
+	 * `max(the running end, the moment it was paid)`, so a renewal bought while a longer term is
+	 * still running already sits past `paidAt + durationDays` before the job touches it. Testing
+	 * against that shorter figure would call the key delivered the instant the webhook lands — the
+	 * banner would say «Готово», polling would stop for good, and the days bought would not show up
+	 * until the person next reloaded the app.
+	 */
+	#awaitingKey(
+		userId: number,
+		subscription: SubscriptionDTO | null,
+		order: OrderDTO | null
+	): boolean {
+		if (order?.status !== 'paid') return false;
+		if (!subscription) return true;
 
-	return subscription.expiresAt < order.paidAt + order.plan.durationDays * DAY_MS;
+		const term = foldTerms(this.#termsOf(userId));
+
+		return term !== null && subscription.expiresAt < term.expiresAtMs;
+	}
+
+	/**
+	 * Every paid order of this person, oldest payment first — the same input
+	 * `SubscriptionProvisionHandler` folds. A row somehow paid without a timestamp is skipped rather
+	 * than counted as epoch zero, exactly as the handler skips it, so the two cannot disagree.
+	 */
+	#termsOf(userId: number): PaidTerm[] {
+		const terms: PaidTerm[] = [];
+
+		for (const row of this.orders.listPaid(userId)) {
+			if (!row.paidAt) continue;
+			terms.push({ paidAtMs: row.paidAt.getTime(), durationDays: row.planSnapshot.durationDays });
+		}
+
+		return terms;
+	}
 }
