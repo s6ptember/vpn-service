@@ -243,3 +243,108 @@ describe('PromoService.redeem', () => {
 		expect(usedCount(promo.id)).toBe(3);
 	});
 });
+
+/**
+ * A11. The criteria are tech.md 11 («CRUD промокодов») and tech.md 5: deletes are soft, because
+ * promoRedemptions and orders point at these rows.
+ */
+describe('PromoService admin CRUD', () => {
+	const input = {
+		code: 'SUMMER',
+		discountType: 'fixed' as const,
+		discountValue: 200,
+		maxUses: 100,
+		validFrom: null,
+		validUntil: null,
+		isActive: true
+	};
+
+	it('creates a code the shop can immediately sell with', () => {
+		const created = promos.create(input);
+
+		expect(created.ok && created.value.usedCount).toBe(0);
+		expect(promos.resolve('SUMMER', user.id).ok).toBe(true);
+	});
+
+	it('refuses a code somebody already minted', () => {
+		// `code` is unique (tech.md 5); two campaigns reaching for one obvious name is not a 500.
+		addPromo({ code: 'SUMMER' });
+
+		expect(promos.create(input)).toEqual({ ok: false, error: 'code_taken' });
+	});
+
+	it('never lets an edit rewrite what has already been spent', () => {
+		/**
+		 * `usedCount` is the ledger `maxUses` is compared against. A form that could set it would let
+		 * an admin hand a spent campaign back to customers without meaning to.
+		 */
+		const promo = addPromo({ maxUses: 10, usedCount: 4 });
+
+		const updated = promos.update(promo.id, { ...input, code: 'START30' });
+
+		expect(updated.ok && updated.value.usedCount).toBe(4);
+	});
+
+	it('lets an edit retire a code by lowering the limit under what is spent', () => {
+		const promo = addPromo({ maxUses: 10, usedCount: 4 });
+
+		promos.update(promo.id, { ...input, code: 'START30', maxUses: 4 });
+
+		expect(promos.resolve('START30', user.id)).toEqual({ ok: false, error: 'exhausted' });
+	});
+
+	it('refuses to rename a code onto one that is taken', () => {
+		addPromo({ code: 'SUMMER' });
+		const other = addPromo({ code: 'START30' });
+
+		expect(promos.update(other.id, input)).toEqual({ ok: false, error: 'code_taken' });
+	});
+
+	it('lets an edit keep its own code', () => {
+		// The uniqueness check must not see the row's own code as a clash with itself.
+		const promo = addPromo({ code: 'SUMMER' });
+
+		expect(promos.update(promo.id, { ...input, discountValue: 300 }).ok).toBe(true);
+	});
+
+	it('archives instead of deleting, and stops the code working', () => {
+		const promo = addPromo();
+
+		expect(promos.archive(promo.id).ok).toBe(true);
+		// The row survives — orders reference it — and refuses every customer from now on.
+		expect(promos.findByCode('START30')).not.toBeNull();
+		expect(promos.resolve('START30', user.id)).toEqual({ ok: false, error: 'inactive' });
+	});
+
+	it('refuses to edit an archived code', () => {
+		// Archiving is the delete path and must be final: an edit would put a retired code back.
+		const promo = addPromo();
+		promos.archive(promo.id);
+
+		expect(promos.update(promo.id, { ...input, code: 'START30' })).toEqual({
+			ok: false,
+			error: 'archived'
+		});
+	});
+
+	it('archives idempotently, so a double-submitted form rewrites no history', () => {
+		const promo = addPromo();
+		const first = promos.archive(promo.id);
+		const second = promos.archive(promo.id);
+
+		expect(first).toEqual(second);
+	});
+
+	it('keeps archived codes out of the admin list and switched-off ones in it', () => {
+		const live = addPromo({ code: 'LIVE' });
+		addPromo({ code: 'HIDDEN', isActive: false });
+		const retired = addPromo({ code: 'RETIRED' });
+		promos.archive(retired.id);
+
+		const listed = promos.listEditable().map((promo) => promo.code);
+
+		expect(listed).toContain('HIDDEN');
+		expect(listed).not.toContain('RETIRED');
+		expect(listed).toContain(live.code);
+	});
+});
