@@ -35,8 +35,11 @@ const integerField = (label: string, min: number, max: number) =>
 		textField(`${label}: введите целое число`),
 		v.trim(),
 		v.regex(/^\d+$/, `${label}: введите целое число`),
+		// Length first: 400 digits pass the regex and come out of Number() as Infinity, which fails
+		// v.integer() before either bound is reached. Rejecting on length keeps that impossible.
+		v.maxLength(String(max).length, `${label}: не больше ${max}`),
 		v.transform(Number),
-		v.integer(),
+		v.integer(`${label}: введите целое число`),
 		v.minValue(min, `${label}: не меньше ${min}`),
 		v.maxValue(max, `${label}: не больше ${max}`)
 	);

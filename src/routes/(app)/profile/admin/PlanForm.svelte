@@ -41,7 +41,10 @@
 	 */
 	function seed(useEcho = true): Fields {
 		const echoed = useEcho && Object.keys(values).length > 0;
-		const field = (key: string, fallback: string) => values[key] ?? (echoed ? '' : fallback);
+		// The echo is consulted only when it is being used at all: `values` still holds the last
+		// rejected attempt when the form is blanked after a save, so reading it either way would
+		// bring that attempt straight back.
+		const field = (key: string, fallback: string) => (echoed ? (values[key] ?? '') : fallback);
 
 		return {
 			name: field('name', plan?.name ?? ''),

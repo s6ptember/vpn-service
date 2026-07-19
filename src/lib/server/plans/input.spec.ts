@@ -97,6 +97,15 @@ describe('PlanInputParser.parse', () => {
 		expect(parser.parse(form({ sortOrder: '-1' })).ok).toBe(false);
 	});
 
+	it('rejects a number so long it overflows, and still says so in Russian', () => {
+		// 400 digits pass /^\d+$/ and come out of Number() as Infinity. Without a guard the admin
+		// would read valibot's "Invalid integer: Received Infinity".
+		const result = parser.parse(form({ priceMinor: '1'.repeat(400) }));
+
+		expect(result.ok).toBe(false);
+		expect(!result.ok && result.error.priceMinor).toMatch(/^[А-Яа-яЁё]/);
+	});
+
 	it('rejects an empty name', () => {
 		expect(parser.parse(form({ name: '   ' })).ok).toBe(false);
 	});

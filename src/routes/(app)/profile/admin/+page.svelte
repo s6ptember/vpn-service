@@ -15,10 +15,9 @@
 	let { data, form }: PageProps = $props();
 
 	let creating = $state(false);
-	/** The plan the confirmation is about. Kept after the dialog closes: only confirm submits. */
-	let archiving = $state<PlanDTO | null>(null);
+	/** The plan the confirmation is about, and the form that will do the writing if it is confirmed. */
+	let archiving = $state<{ plan: PlanDTO; form: HTMLFormElement } | null>(null);
 	let confirmOpen = $state(false);
-	let archiveForm = $state<HTMLFormElement | null>(null);
 
 	/** An answer belongs to exactly one form; every other block stays quiet. */
 	const answerFor = (target: number | null) => (form?.target === target ? form : null);
@@ -40,8 +39,19 @@
 
 	let banner = $derived(answerHasHome ? null : (form?.message ?? null));
 
-	function askArchive(plan: PlanDTO) {
-		archiving = plan;
+	/** Red is for refusals. A confirmation in the error colour reads as a failure. */
+	const tone = (ok: boolean) => (ok ? 'text-muted' : 'text-danger-700');
+
+	/**
+	 * Intercepts the archive submit so the dialog can ask first. Without JS the button submits its
+	 * own form directly: no confirmation step, but the write still works.
+	 */
+	function askArchive(event: MouseEvent, plan: PlanDTO) {
+		const form = (event.currentTarget as HTMLElement).closest('form');
+		if (!form) return;
+
+		event.preventDefault();
+		archiving = { plan, form };
 		confirmOpen = true;
 	}
 </script>
@@ -78,7 +88,7 @@
 		<div class="mt-3">
 			<Card>
 				{#if answer?.message}
-					<p class="mb-3 text-[14px] text-danger-700">{answer.message}</p>
+					<p class={['mb-3 text-[14px]', tone(answer.ok)]}>{answer.message}</p>
 				{/if}
 
 				<PlanForm
@@ -123,7 +133,7 @@
 					</div>
 
 					{#if answer?.message}
-						<p class="mt-3 text-[14px] text-muted">{answer.message}</p>
+						<p class={['mt-3 text-[14px]', tone(answer.ok)]}>{answer.message}</p>
 					{/if}
 
 					<details class="group mt-3 border-t border-line pt-3">
@@ -148,15 +158,24 @@
 								submitLabel="Сохранить"
 							/>
 
-							<Button
-								variant="danger"
-								size="sm"
-								class="mt-3 w-full"
-								onclick={() => askArchive(plan)}
-								aria-label="Отправить тариф {plan.name} в архив"
-							>
-								В архив
-							</Button>
+							<!--
+								A real form, not a fetch: the dialog only asks, this is what writes. The submit
+								button carries the id, so with scripting off it still archives — the confirmation
+								step is the enhancement, not the mechanism.
+							-->
+							<form method="POST" action="?/archive" use:enhance class="mt-3">
+								<input type="hidden" name="id" value={plan.id} />
+								<Button
+									type="submit"
+									variant="danger"
+									size="sm"
+									class="w-full"
+									onclick={(event) => askArchive(event, plan)}
+									aria-label="Отправить тариф {plan.name} в архив"
+								>
+									В архив
+								</Button>
+							</form>
 						</div>
 					</details>
 				</Card>
@@ -170,23 +189,15 @@
 	</p>
 </div>
 
-<!--
-	The confirmation is collected by the dialog but sent by a real form, so the write keeps the CSRF
-	check and the no-JS path that every other action on this page has.
--->
-<form method="POST" action="?/archive" bind:this={archiveForm} use:enhance class="hidden">
-	<input type="hidden" name="id" value={archiving?.id ?? ''} />
-</form>
-
 <Modal
 	bind:open={confirmOpen}
 	title="В архив?"
 	confirmLabel="В архив"
 	cancelLabel="Отмена"
-	onconfirm={() => archiveForm?.requestSubmit()}
+	onconfirm={() => archiving?.form.requestSubmit()}
 >
 	<p class="text-[14px] text-muted">
-		«{archiving?.name}» пропадёт с главной и из этого списка. Прошлые заказы останутся, вернуть
+		«{archiving?.plan.name}» пропадёт с главной и из этого списка. Прошлые заказы останутся, вернуть
 		тариф обратно нельзя.
 	</p>
 </Modal>

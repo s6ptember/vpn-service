@@ -22,6 +22,11 @@ const planName = (suffix: string) => `E2E ${suffix} ${Date.now()}`;
 const cardFor = (page: Page, name: string) =>
 	page.locator('div.rounded-card').filter({ has: page.getByRole('heading', { name, level: 3 }) });
 
+/** The home renders each plan as an <article>. Assertions scope to it, or a price on the wrong
+ *  card would still satisfy a page-wide search. */
+const planCard = (page: Page, name: string) =>
+	page.locator('article').filter({ has: page.getByRole('heading', { name, level: 3 }) });
+
 const createForm = (page: Page) => page.locator('form[action="?/create"]');
 const editForm = (page: Page, name: string) =>
 	cardFor(page, name).locator('form[action="?/update"]');
@@ -35,19 +40,24 @@ test.describe('home: plans from the database', () => {
 
 		// tech.md 11 puts имя, срок and цена on the card. The name is free text, so the duration has
 		// to be written out rather than read out of it.
+		// Every assertion is scoped to its own card: a page-wide search would pass just as happily
+		// with all three prices rendered on one card.
 		for (const [name, days, price] of [
 			['7 дней', 'Доступ на 7 дней', '1,49'],
 			['30 дней', 'Доступ на 30 дней', '4,99'],
 			['90 дней', 'Доступ на 90 дней', '10,49']
 		]) {
-			await expect(page.getByRole('heading', { name, level: 3 })).toBeVisible();
-			await expect(page.getByText(days)).toBeVisible();
-			await expect(page.getByText(price, { exact: false }).first()).toBeVisible();
+			const card = planCard(page, name);
+
+			await expect(card).toHaveCount(1);
+			await expect(card.getByText(days)).toBeVisible();
+			await expect(card.getByText(price, { exact: false })).toBeVisible();
+			await expect(card.getByText('Безлимитный трафик')).toBeVisible();
 		}
 
 		// The seed prices 90 days well under three months of the 7-day rate, so it takes the badge.
-		await expect(page.getByText('Выгоднее всего')).toBeVisible();
-		await expect(page.getByText('Безлимитный трафик').first()).toBeVisible();
+		await expect(planCard(page, '90 дней').getByText('Выгоднее всего')).toBeVisible();
+		await expect(planCard(page, '7 дней').getByText('Выгоднее всего')).toHaveCount(0);
 	});
 
 	test('serves the plans to a visitor with no session at all', async ({ page }) => {

@@ -14,6 +14,8 @@ type Target = number | null;
 
 interface ActionResult {
 	target: Target;
+	/** Whether the write happened. The page reads it to pick a tone: red is for refusals only. */
+	ok: boolean;
 	/** One sentence for the admin. Null when the fields carry the message themselves. */
 	message: string | null;
 	/** Field name -> message, for the inputs that failed. */
@@ -37,6 +39,7 @@ function formValues(data: FormData): Record<string, string> {
 
 const ok = (target: Target, message: string): ActionResult => ({
 	target,
+	ok: true,
 	message,
 	errors: {},
 	values: {}
@@ -60,6 +63,7 @@ export const load: PageServerLoad = async ({ locals }) => ({
 const forbidden = () =>
 	fail(403, {
 		target: null,
+		ok: false,
 		message: 'Раздел только для администратора.',
 		errors: {},
 		values: {}
@@ -75,6 +79,7 @@ export const actions = {
 		if (!parsed.ok) {
 			return fail(400, {
 				target: null,
+				ok: false,
 				message: null,
 				errors: parsed.error,
 				values
@@ -96,6 +101,7 @@ export const actions = {
 		if (!id.ok) {
 			return fail(400, {
 				target: null,
+				ok: false,
 				message: id.error,
 				errors: {},
 				values
@@ -107,6 +113,7 @@ export const actions = {
 		if (!parsed.ok) {
 			return fail(400, {
 				target: id.value,
+				ok: false,
 				message: null,
 				errors: parsed.error,
 				values
@@ -118,6 +125,7 @@ export const actions = {
 		if (!updated.ok) {
 			return fail(409, {
 				target: id.value,
+				ok: false,
 				message:
 					updated.error === 'archived'
 						? 'Тариф уже в архиве, его больше нельзя изменить.'
@@ -141,6 +149,7 @@ export const actions = {
 		if (!id.ok) {
 			return fail(400, {
 				target: null,
+				ok: false,
 				message: id.error,
 				errors: {},
 				values
@@ -152,6 +161,7 @@ export const actions = {
 		if (!archived.ok) {
 			return fail(409, {
 				target: id.value,
+				ok: false,
 				message: 'Такого тарифа больше нет.',
 				errors: {},
 				values
