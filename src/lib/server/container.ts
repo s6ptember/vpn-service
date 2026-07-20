@@ -27,6 +27,7 @@ import { log } from './log';
 import { PlanInputParser, PlanService } from './plans';
 import { RateLimiter } from './rate-limit';
 import { SubscriptionReader, SubscriptionService } from './subscriptions';
+import { FaqService } from './support';
 
 /**
  * Composition root: the ONE place that picks an implementation. Nothing below imports a sibling
@@ -143,6 +144,9 @@ export const paymentWebhooks = new PaymentWebhookService(db, orders, jobs, log, 
 	provider: payments.id,
 	adminChatId: config.ADMIN_CHAT_ID
 });
+
+/** A13 — the FAQ is public and read-only: no clock, no currency, nothing to inject but the table. */
+export const faq = new FaqService(db);
 
 export const subscriptions = new SubscriptionService(db);
 
