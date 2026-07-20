@@ -1,9 +1,10 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import { OrderService, PriceCalculator } from '../billing';
 import { addPlan, addUser } from '../billing/fixtures';
+import { FakeMarzban } from '../clients/marzban';
 import type { Db } from '../db/client';
 import type { PlanRow, UserRow } from '../db/schema';
-import { createTestDb, TestClock } from '../jobs/fixtures';
+import { createTestDb, silentLogger, TestClock } from '../jobs/fixtures';
 import { PlanService } from '../plans';
 import { DAY_MS } from './expiry';
 import { SubscriptionReader } from './subscription-reader';
@@ -20,6 +21,7 @@ let db: Db;
 let clock: TestClock;
 let orders: OrderService;
 let subscriptions: SubscriptionService;
+let marzban: FakeMarzban;
 let reader: SubscriptionReader;
 let user: UserRow;
 let plan: PlanRow;
@@ -67,21 +69,29 @@ beforeEach(() => {
 	clock = new TestClock();
 	orders = new OrderService(db, { now: clock.now });
 	subscriptions = new SubscriptionService(db, { now: clock.now });
-	reader = new SubscriptionReader(subscriptions, orders, new PlanService(db, 'usd'), {
-		now: clock.now
-	});
+	marzban = new FakeMarzban();
+	reader = new SubscriptionReader(
+		subscriptions,
+		orders,
+		new PlanService(db, 'usd'),
+		marzban,
+		silentLogger(),
+		{ now: clock.now }
+	);
 
 	user = addUser(db);
 	plan = addPlan(db);
 });
 
 describe('SubscriptionReader.forUser', () => {
-	it('says there is nothing to wait for when nobody has bought anything', () => {
-		expect(reader.forUser(user.id)).toEqual({
-			subscription: null,
-			latestOrder: null,
-			awaitingKey: false
-		});
+	it('says there is nothing to wait for when nobody has bought anything', async () => {
+		const view = reader.forUser(user.id);
+
+		expect(view.subscription).toBeNull();
+		expect(view.plan).toBeNull();
+		expect(view.latestOrder).toBeNull();
+		expect(view.awaitingKey).toBe(false);
+		await expect(view.trafficUsedBytes).resolves.toBeNull();
 	});
 
 	it('waits while a paid order has no subscription behind it yet', () => {
@@ -107,6 +117,8 @@ describe('SubscriptionReader.forUser', () => {
 			status: 'active',
 			daysLeft: 30
 		});
+		// The plan sits behind the subscription, read fresh rather than off the snapshot.
+		expect(view.plan).toMatchObject({ id: plan.id, name: '30 дней' });
 	});
 
 	it('keeps waiting when the row is still the one from the PREVIOUS purchase', () => {
@@ -162,16 +174,59 @@ describe('SubscriptionReader.forUser', () => {
 		expect(reader.forUser(user.id).subscription).toMatchObject({ status: 'expired', daysLeft: 0 });
 	});
 
-	it('answers only about the person it was asked about', () => {
+	it('answers only about the person it was asked about', async () => {
 		pay();
 		const stranger = addUser(db, { telegramId: 700_000_999, username: 'someone_else' });
 
 		// The subscription URL is the key itself (tech.md 7). It travels by user id and nothing else.
-		expect(reader.forUser(stranger.id)).toEqual({
-			subscription: null,
-			latestOrder: null,
-			awaitingKey: false
-		});
+		const view = reader.forUser(stranger.id);
+
+		expect(view.subscription).toBeNull();
+		expect(view.plan).toBeNull();
+		expect(view.latestOrder).toBeNull();
+		expect(view.awaitingKey).toBe(false);
+		await expect(view.trafficUsedBytes).resolves.toBeNull();
+	});
+});
+
+describe('SubscriptionReader.forUser — traffic', () => {
+	it('streams what Marzban reports used, without blocking the rest of the view', async () => {
+		const order = pay(30);
+		provision(order.paidAt!.getTime() + 30 * DAY_MS);
+
+		marzban.seed([
+			{
+				username: `tg_${user.telegramId}`,
+				status: 'active',
+				expiresAtMs: order.paidAt!.getTime() + 30 * DAY_MS,
+				usedTrafficBytes: 3 * 1024 ** 3,
+				subscriptionUrl: `https://sub.local/sub/tg_${user.telegramId}`,
+				links: []
+			}
+		]);
+
+		const view = reader.forUser(user.id);
+
+		// Synchronous fields are already there; the promise is what carries the network read.
+		expect(view.subscription).not.toBeNull();
+		await expect(view.trafficUsedBytes).resolves.toBe(3 * 1024 ** 3);
+	});
+
+	it('resolves to null rather than rejecting when Marzban cannot answer', async () => {
+		const order = pay(30);
+		provision(order.paidAt!.getTime() + 30 * DAY_MS);
+
+		marzban.failNext('timeout');
+
+		const view = reader.forUser(user.id);
+
+		await expect(view.trafficUsedBytes).resolves.toBeNull();
+	});
+
+	it('is null with no subscription, without touching Marzban at all', async () => {
+		const view = reader.forUser(user.id);
+
+		await expect(view.trafficUsedBytes).resolves.toBeNull();
 	});
 });
 

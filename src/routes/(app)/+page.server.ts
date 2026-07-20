@@ -22,7 +22,13 @@ export const load: PageServerLoad = async ({ locals, depends }) => {
 
 	const view = locals.user
 		? access.forUser(locals.user.id)
-		: { subscription: null, latestOrder: null, awaitingKey: false };
+		: {
+				subscription: null,
+				plan: null,
+				trafficUsedBytes: Promise.resolve(null),
+				latestOrder: null,
+				awaitingKey: false
+			};
 
 	return { plans: plans.listActive(), ...view };
 };

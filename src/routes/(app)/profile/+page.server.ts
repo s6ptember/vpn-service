@@ -26,7 +26,15 @@ export const load: PageServerLoad = async ({ locals, depends }) => {
 	 * answers empty. invalidateAll() after the exchange runs it again with the person in place.
 	 */
 	if (!locals.user) {
-		return { subscription: null, latestOrder: null, awaitingKey: false, history: [], currency };
+		return {
+			subscription: null,
+			plan: null,
+			trafficUsedBytes: Promise.resolve(null),
+			latestOrder: null,
+			awaitingKey: false,
+			history: [],
+			currency
+		};
 	}
 
 	return {
