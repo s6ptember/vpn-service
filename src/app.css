@@ -1,46 +1,138 @@
 @import 'tailwindcss';
 
-/* Design tokens mirror vpn-miniapp.html. The mini app commits to this light palette and pushes it
-   to Telegram via setHeaderColor/setBackgroundColor rather than following --tg-theme-* vars:
-   cards, glass and accent are tuned against #F2F2F6 and break under a dark client theme. */
+/**
+ * Onest, self-hosted. Gilroy is the reference face but it is licensed per-seat and cannot ship in a
+ * repository; Onest is the closest free geometric grotesque that carries a full Cyrillic set — which
+ * a Russian-language interface needs and Poppins, the usual Gilroy substitute, does not have.
+ *
+ * One variable file per subset, split on the same unicode ranges Google Fonts uses: a Latin-only
+ * screen never downloads the 14 KB of Cyrillic, and vice versa. Self-hosted rather than linked, so
+ * the mini app owes nothing to fonts.gstatic.com — one less origin in the CSP and one less round
+ * trip on a cold WebView.
+ */
+@font-face {
+	font-family: 'Onest';
+	font-style: normal;
+	font-weight: 400 800;
+	font-display: swap;
+	src: url('/fonts/onest-cyrillic-ext.woff2') format('woff2');
+	unicode-range: U+0460-052F, U+1C80-1C8A, U+20B4, U+2DE0-2DFF, U+A640-A69F, U+FE2E-FE2F;
+}
+
+@font-face {
+	font-family: 'Onest';
+	font-style: normal;
+	font-weight: 400 800;
+	font-display: swap;
+	src: url('/fonts/onest-cyrillic.woff2') format('woff2');
+	unicode-range: U+0301, U+0400-045F, U+0490-0491, U+04B0-04B1, U+2116;
+}
+
+@font-face {
+	font-family: 'Onest';
+	font-style: normal;
+	font-weight: 400 800;
+	font-display: swap;
+	src: url('/fonts/onest-latin-ext.woff2') format('woff2');
+	unicode-range:
+		U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329,
+		U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F,
+		U+A720-A7FF;
+}
+
+@font-face {
+	font-family: 'Onest';
+	font-style: normal;
+	font-weight: 400 800;
+	font-display: swap;
+	src: url('/fonts/onest-latin.woff2') format('woff2');
+	unicode-range:
+		U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329,
+		U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
+/**
+ * The app commits to one dark palette and pushes it to Telegram via setHeaderColor/setBackgroundColor
+ * rather than following --tg-theme-* vars: every surface, the glass and the accent are tuned against
+ * #101828 and would break under a light client theme.
+ */
 @theme {
-	--color-page: #f2f2f6;
-	--color-surface: #ffffff;
-	--color-ink: #0d0d0f;
-	--color-muted: #68686f;
-	--color-line: #e5e5ea;
-	--color-shell: #dcdce2;
+	/* Surfaces. #101828 is the palette's Black; cards lift toward Dark slate grey rather than
+	   toward grey, so the whole stack keeps one blue cast. */
+	--color-page: #101828;
+	--color-surface: #1a2233;
+	/* One step above a card: inputs, nested rows, and anything that must read as inset on a card. */
+	--color-elevated: #232d42;
+	--color-line: #344054;
+	/* Outside the phone frame on desktop — below the page, so the frame reads as a lit object. */
+	--color-shell: #080d16;
 
-	--color-accent-100: #e6e2fe;
-	--color-accent-400: #afa2f0;
-	--color-accent-500: #8978e3;
-	--color-accent-600: #624bd2;
-	--color-accent-700: #4630b5;
+	--color-ink: #ffffff;
+	--color-muted: #878ea8;
+	/* The faintest legible step. Meta text only, never a full sentence. */
+	--color-subtle: #667085;
 
-	/* vpn-miniapp.html shows no failure or warning state; these extend the palette for the
-	   danger/warn tones the Button and Badge contracts in tech.md 12 require. */
-	--color-danger-100: #fde2e2;
-	--color-danger-600: #d23b3b;
-	--color-danger-700: #a82525;
-	--color-warn-100: #fdf0d5;
-	--color-warn-700: #8a5a00;
+	/**
+	 * One accent hue, #AB93E1. It is a LIGHT colour on a dark page, so anything filled with it takes
+	 * `text-on-accent`, never white — the inversion the reference screens use for their filled cards.
+	 * The ramp runs dark→light: 100 is a wash for badge fills, 700 is accent-coloured text.
+	 */
+	--color-accent-100: #241f38;
+	--color-accent-400: #8a6fd1;
+	--color-accent-500: #9b81da;
+	--color-accent-600: #ab93e1;
+	--color-accent-700: #c9b8ee;
+	--color-on-accent: #101828;
 
-	--radius-control: 12px;
-	--radius-field: 14px;
-	--radius-card: 18px;
+	/* State colours, same treatment: a dark wash for fills, a light tint for text on the page. */
+	--color-danger-100: #331b27;
+	--color-danger-600: #e5556e;
+	--color-danger-700: #ffa3b1;
+	--color-warn-100: #33291a;
+	--color-warn-700: #ffe078;
+
+	--radius-control: 14px;
+	--radius-field: 16px;
+	--radius-card: 24px;
 	--radius-island: 999px;
+
+	/**
+	 * The reference type scale, verbatim: 35 · 31 · 27 · 21 · 19 · 17 · 15 · 12 · 11. Named by role
+	 * rather than by size so a screen picks a step instead of a number — arbitrary `text-[14px]`
+	 * values are what let the old design drift off any scale at all.
+	 */
+	--text-display: 35px;
+	--text-display--line-height: 1.05;
+	--text-title: 31px;
+	--text-title--line-height: 1.1;
+	--text-h1: 27px;
+	--text-h1--line-height: 1.15;
+	--text-h2: 21px;
+	--text-h2--line-height: 1.2;
+	--text-h3: 19px;
+	--text-h3--line-height: 1.3;
+	--text-body: 17px;
+	--text-body--line-height: 1.45;
+	--text-sm: 15px;
+	--text-sm--line-height: 1.45;
+	--text-xs: 12px;
+	--text-xs--line-height: 1.35;
+	--text-2xs: 11px;
+	--text-2xs--line-height: 1.3;
 
 	--ease-spring: linear(0, 0.31, 0.79, 1.02, 1.05, 1);
 
 	--font-sans:
-		-apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI', Roboto, 'Helvetica Neue', Arial,
-		sans-serif;
+		Onest, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
 	--font-mono: ui-monospace, SFMono-Regular, 'SF Mono', Menlo, monospace;
 }
 
 @layer base {
 	html {
 		-webkit-text-size-adjust: 100%;
+		/* Tells the WebView to render scrollbars, form controls and the caret dark. Without it a text
+		   field in a Telegram WebView still paints a white caret on a white inset. */
+		color-scheme: dark;
 	}
 
 	body {
@@ -89,12 +181,15 @@
 @utility island {
 	position: relative;
 	border-radius: var(--radius-island);
-	background: color-mix(in srgb, white 70%, transparent);
+	background: color-mix(in srgb, var(--color-elevated) 82%, transparent);
 	backdrop-filter: blur(24px) saturate(180%);
 	-webkit-backdrop-filter: blur(24px) saturate(180%);
+	/* On a dark page a shadow alone reads as nothing, so the lift comes from the inset highlight
+	   along the top edge as much as from the drop shadow. */
 	box-shadow:
-		0 12px 32px -8px rgb(13 13 15 / 0.18),
-		0 2px 8px -2px rgb(13 13 15 / 0.06);
+		0 16px 40px -8px rgb(0 0 0 / 0.6),
+		0 2px 8px -2px rgb(0 0 0 / 0.4),
+		inset 0 1px 0 rgb(255 255 255 / 0.08);
 
 	/* Hairline gradient border; mask-composite keeps it 1px on a rounded shape. */
 	&::before {
@@ -105,9 +200,9 @@
 		padding: 1px;
 		background: linear-gradient(
 			160deg,
-			rgb(255 255 255 / 0.95),
-			rgb(13 13 15 / 0.1) 45%,
-			rgb(13 13 15 / 0.06)
+			rgb(255 255 255 / 0.18),
+			rgb(255 255 255 / 0.05) 45%,
+			rgb(255 255 255 / 0.02)
 		);
 		mask:
 			linear-gradient(#000 0 0) content-box,
@@ -124,16 +219,18 @@
 /* Old Android WebViews ignore backdrop-filter; glass is decoration, readability must not depend on it. */
 @supports not (backdrop-filter: blur(1px)) {
 	.island {
-		background: var(--color-surface);
+		background: var(--color-elevated);
 	}
 }
 
+/* The travelling pill is the one accent-filled thing on the island, so it gets the accent's own glow
+   rather than a neutral shadow. */
 @utility island-pill {
-	box-shadow: 0 4px 12px -2px rgb(98 75 210 / 0.5);
+	box-shadow: 0 4px 14px -2px rgb(171 147 225 / 0.45);
 }
 
 @utility toast-surface {
-	background: rgb(13 13 15 / 0.9);
+	background: rgb(35 45 66 / 0.92);
 	backdrop-filter: blur(16px);
 	-webkit-backdrop-filter: blur(16px);
 }

@@ -3,8 +3,8 @@ import type { SessionUser } from '$lib/types';
 import { toasts } from '$lib/ui/toasts.svelte';
 import { webApp } from './telegram-webapp';
 
-/** Page background pushed to the Telegram chrome so the app and the client agree (vpn-miniapp.html). */
-const PAGE_COLOR = '#F2F2F6';
+/** Page background pushed to the Telegram chrome so the app and the client agree (app.css --color-page). */
+const PAGE_COLOR = '#101828';
 
 const AUTH_ENDPOINT = '/api/auth/telegram';
 
