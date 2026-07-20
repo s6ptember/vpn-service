@@ -1,5 +1,5 @@
 import { expect, test, type APIRequestContext, type Page } from '@playwright/test';
-import { FRAME, hydrated, signIn, withId } from './helpers';
+import { FRAME, hydrated, openBuySheet, signIn, withId } from './helpers';
 
 /**
  * Stage 3 end to end (tech.md 14): initData -> session -> purchase through the fake provider ->
@@ -79,11 +79,23 @@ const postWebhook = (request: APIRequestContext, body: unknown, signature = FAKE
 		data: body
 	});
 
-/** Buys a plan and returns the publicId of the order it opened. */
+/**
+ * Buys a plan and returns the publicId of the order it opened.
+ *
+ * Opens the deck sheet itself, but only when it is not open already: once it is, its own backdrop
+ * sits on top of Открыть список тарифов — a second click there would hang waiting for a button a
+ * caller that opened the sheet first (to check the "Продлит доступ до" line, say) cannot reach.
+ */
 async function startCheckout(page: Page, planName = PLAN_NAME): Promise<string> {
-	await planCard(page, planName)
-		.getByRole('button', { name: `Купить тариф ${planName}` })
-		.click();
+	const buyButton = planCard(page, planName).getByRole('button', {
+		name: `Купить тариф ${planName}`
+	});
+
+	if (!(await buyButton.isVisible())) {
+		await page.getByRole('button', { name: 'Открыть список тарифов' }).click();
+	}
+
+	await buyButton.click();
 
 	await expect.poll(() => openedLinks(page)).toHaveLength(1);
 
@@ -143,7 +155,7 @@ test.describe.serial('buying a subscription', () => {
 		await captureCheckoutLinks(page);
 
 		await page.goto('/');
-		await hydrated(page);
+		await openBuySheet(page);
 
 		// With access live, the card sells an extension rather than a start.
 		const card = planCard(page, PLAN_NAME);

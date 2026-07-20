@@ -93,3 +93,14 @@ export async function signIn(
 /** The layout holds a splash over everything until the handshake settles. Wait for it, or a click
  *  lands before the page is listening. */
 export const hydrated = (page: Page) => expect(page.locator('[data-splash]')).toHaveCount(0);
+
+/**
+ * Opens the bottom sheet holding the plan deck from Главная's Текущий план card. Every stage after
+ * the dashboard redesign starts a purchase this way instead of finding the cards already on the
+ * page — the button's own aria-label, not its visible "Купить", keeps this from also matching a
+ * plan card's own buy button once the sheet is open.
+ */
+export async function openBuySheet(page: Page) {
+	await hydrated(page);
+	await page.getByRole('button', { name: 'Открыть список тарифов' }).click();
+}

@@ -88,10 +88,14 @@ test.describe('profile', () => {
 		await expect(page).toHaveURL('/');
 	});
 
-	test('invites a visitor without a session to open the app from Telegram', async ({ page }) => {
+	test('shows an incognito identity and an invitation to buy without a session', async ({
+		page
+	}) => {
 		await page.goto('/profile');
 
-		await expect(page.getByText('Профиль откроется после входа')).toBeVisible();
+		await expect(page.getByRole('heading', { name: 'Профиль', level: 1 })).toBeVisible();
+		await expect(page.getByText('Инкогнито')).toBeVisible();
 		await expect(page.getByText('@')).toHaveCount(0);
+		await expect(page.getByText('Подписки нет')).toBeVisible();
 	});
 });

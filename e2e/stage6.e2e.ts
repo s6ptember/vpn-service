@@ -1,5 +1,5 @@
 import { expect, test, type APIRequestContext, type Page } from '@playwright/test';
-import { ADMIN_CHAT_ID, FRAME, hydrated, signIn, withId } from './helpers';
+import { ADMIN_CHAT_ID, FRAME, hydrated, openBuySheet, signIn, withId } from './helpers';
 
 /**
  * Stage 6, A16 (tech.md 11): the operations half of the panel — recent support requests, jobs that
@@ -71,7 +71,7 @@ const paidEvent = (publicId: string) => ({
 async function subscribe(page: Page, request: APIRequestContext): Promise<void> {
 	await captureCheckoutLinks(page);
 	await page.goto('/');
-	await hydrated(page);
+	await openBuySheet(page);
 
 	await planCard(page, PLAN_NAME)
 		.getByRole('button', { name: new RegExp(`тариф ${PLAN_NAME}`) })

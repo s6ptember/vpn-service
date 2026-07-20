@@ -1,5 +1,5 @@
 import { expect, test, type APIRequestContext, type Page } from '@playwright/test';
-import { ADMIN_CHAT_ID, FRAME, hydrated, signIn, withId } from './helpers';
+import { ADMIN_CHAT_ID, FRAME, hydrated, openBuySheet, signIn, withId } from './helpers';
 
 /**
  * Stage 4 end to end (tech.md 14): a promo code checked in Профиль, spent on a purchase from
@@ -71,13 +71,17 @@ const postWebhook = (request: APIRequestContext, body: unknown) =>
 		data: body
 	});
 
-/** Types a code into the deck's promo field and buys the plan; returns the order's public id. */
+/** Types a code into the promo sheet and buys the plan; returns the order's public id. */
 async function buyWithPromo(page: Page, code: string | null): Promise<string> {
 	if (code !== null) {
-		await page.getByText('У меня есть промокод').click();
-		await page.getByLabel('Промокод').fill(code);
+		await page.getByRole('button', { name: 'Ввести промокод' }).click();
+		// getByLabel would also match the sheet itself — its own accessible name is the title,
+		// "Промокод", by way of aria-labelledby — so the role narrows it to the actual field.
+		await page.getByRole('textbox', { name: 'Промокод' }).fill(code);
+		await page.getByRole('button', { name: 'Готово' }).click();
 	}
 
+	await openBuySheet(page);
 	await planCard(page, PLAN_NAME)
 		.getByRole('button', { name: new RegExp(`тариф ${PLAN_NAME}`) })
 		.click();
@@ -148,8 +152,11 @@ test.describe.serial('buying with a promo code', () => {
 		await page.goto('/');
 		await hydrated(page);
 
-		await page.getByText('У меня есть промокод').click();
-		await page.getByLabel('Промокод').fill(PROMO_CODE);
+		await page.getByRole('button', { name: 'Ввести промокод' }).click();
+		await page.getByRole('textbox', { name: 'Промокод' }).fill(PROMO_CODE);
+		await page.getByRole('button', { name: 'Готово' }).click();
+
+		await openBuySheet(page);
 		await planCard(page, PLAN_NAME)
 			.getByRole('button', { name: new RegExp(`тариф ${PLAN_NAME}`) })
 			.click();

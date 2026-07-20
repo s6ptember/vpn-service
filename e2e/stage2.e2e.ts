@@ -1,5 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
-import { ADMIN_CHAT_ID, FRAME, hydrated, signIn, withId } from './helpers';
+import { ADMIN_CHAT_ID, FRAME, hydrated, openBuySheet, signIn, withId } from './helpers';
 
 /**
  * Stage 2's acceptance criteria end to end: the home shows the active plans from the DB with their
@@ -34,9 +34,9 @@ const editForm = (page: Page, name: string) =>
 test.describe('home: plans from the database', () => {
 	test('shows every seeded plan with its duration and price', async ({ page }) => {
 		await page.goto('/');
-		await hydrated(page);
+		await openBuySheet(page);
 
-		await expect(page.getByRole('heading', { name: 'Тарифы', level: 1 })).toBeVisible();
+		await expect(page.getByRole('heading', { name: 'Тарифы', level: 2 })).toBeVisible();
 
 		// tech.md 11 puts имя, срок and цена on the card. The name is free text, so the duration has
 		// to be written out rather than read out of it.
@@ -63,6 +63,7 @@ test.describe('home: plans from the database', () => {
 	test('serves the plans to a visitor with no session at all', async ({ page }) => {
 		// Plans are public: the load has to survive locals.user === null (tech.md 9).
 		await page.goto('/');
+		await openBuySheet(page);
 
 		await expect(page.getByRole('heading', { name: '30 дней', level: 3 })).toBeVisible();
 	});
@@ -155,6 +156,7 @@ test.describe.serial('admin: plan CRUD', () => {
 
 		// The server owns the price and the currency: 9999 minor units is what the customer sees.
 		await page.goto('/');
+		await openBuySheet(page);
 		await expect(page.getByRole('heading', { name: created, level: 3 })).toBeVisible();
 		await expect(page.getByText('10 ГБ трафика')).toBeVisible();
 		await expect(page.getByText('Доступ на 1 день')).toBeVisible();
@@ -197,6 +199,7 @@ test.describe.serial('admin: plan CRUD', () => {
 		await expect(page.getByRole('heading', { name: renamed, level: 3 })).toHaveCount(0);
 
 		await page.goto('/');
+		await openBuySheet(page);
 		await expect(page.getByRole('heading', { name: renamed, level: 3 })).toHaveCount(0);
 		await expect(page.getByRole('heading', { name: '30 дней', level: 3 })).toBeVisible();
 	});
@@ -226,6 +229,7 @@ test.describe.serial('admin: plan CRUD', () => {
 		await expect(cardFor(page, hidden).getByText('Скрыт', { exact: true })).toBeVisible();
 
 		await page.goto('/');
+		await openBuySheet(page);
 		await expect(page.getByRole('heading', { name: hidden, level: 3 })).toHaveCount(0);
 
 		// Leave the run as it was found.
