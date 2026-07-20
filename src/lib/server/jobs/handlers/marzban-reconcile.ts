@@ -84,17 +84,40 @@ export class MarzbanReconcileHandler extends JobHandler<'marzban.reconcile'> {
 		}
 
 		/**
-		 * Only `active` and `disabled` are ours to set (clients/marzban/types.ts). The panel's other
-		 * statuses — `limited`, `expired`, `on_hold` — are Marzban's own conclusions, and the one that
-		 * matters here resolves itself: a user it marked `expired` under a stale date becomes active
-		 * again once the corrected expiry lands above. So the desired status is read from our date,
-		 * and anything the panel says that is not already that is corrected.
+		 * Whether our record says this person is owed access at all.
+		 *
+		 * The status column is read as well as the date, and that is load-bearing: `revoked` is a
+		 * decision somebody made, and a revoked subscription can still hold a future `expiresAt` —
+		 * revoking does not rewrite the date. Deciding from the date alone would hand access back to
+		 * exactly the person it was taken from, which is the one outcome this job must never produce.
 		 */
-		const desired = isActiveAt(expiresAtMs, this.now()) ? 'active' : 'disabled';
-		const statusDrifted = remote.status !== desired;
+		const owedAccess = subscription.status === 'active' && isActiveAt(expiresAtMs, this.now());
 
-		if (statusDrifted) {
-			await this.marzban.setStatus(marzbanUsername, desired);
+		/**
+		 * Only `active` and `disabled` are ours to set (clients/marzban/types.ts), and of Marzban's
+		 * five statuses only `active` actually lets somebody connect. So the correction is asymmetric
+		 * rather than a straight comparison against a desired value:
+		 *
+		 *   - owed access, panel says `disabled` or `expired` → switch it on. Both are conclusions
+		 *     drawn from something we own — an admin toggle, or a stale date the write above has just
+		 *     corrected — so ours is the later word.
+		 *   - owed no access, panel says `active` → switch it off.
+		 *   - anything else → leave it alone. `limited` and `on_hold` are Marzban's own conclusions,
+		 *     drawn from the traffic quota and from a start date we do not model. Flipping `limited`
+		 *     to `active` would hand back an allowance the panel had already spent, and this job has
+		 *     no business overruling a quota it does not track.
+		 */
+		const grantsAccess = remote.status === 'active';
+		const correctable = remote.status === 'disabled' || remote.status === 'expired';
+
+		let statusDrifted = false;
+
+		if (owedAccess && correctable) {
+			await this.marzban.setStatus(marzbanUsername, 'active');
+			statusDrifted = true;
+		} else if (!owedAccess && grantsAccess) {
+			await this.marzban.setStatus(marzbanUsername, 'disabled');
+			statusDrifted = true;
 		}
 
 		this.log.info('marzban_reconciled', {

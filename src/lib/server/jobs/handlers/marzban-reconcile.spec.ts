@@ -171,6 +171,77 @@ describe('MarzbanReconcileHandler', () => {
 		expect(remote.status).toBe('active');
 	});
 
+	// --- what "local state is leading" actually means (tech.md 6) ---------------------------------
+
+	/**
+	 * Revoking does not rewrite `expiresAt`, so a revoked subscription routinely holds a date in the
+	 * future. Reading access off the date alone would hand it straight back to the person it was
+	 * taken from — the one outcome this job must never produce.
+	 */
+	it('cuts off a subscription revoked by hand, whatever its date says', async () => {
+		const id = addSubscription(NOW + 10 * DAY_MS, 'revoked');
+		seedPanel({ expiresAtMs: NOW + 10 * DAY_MS, status: 'active' });
+
+		await handler.handle({ subscriptionId: id });
+
+		expect((await fake.getUser(username))?.status).toBe('disabled');
+	});
+
+	it('never re-enables a revoked subscription the panel had already disabled', async () => {
+		const id = addSubscription(NOW + 10 * DAY_MS, 'revoked');
+		seedPanel({ expiresAtMs: NOW + 10 * DAY_MS, status: 'disabled' });
+
+		await handler.handle({ subscriptionId: id });
+
+		expect((await fake.getUser(username))?.status).toBe('disabled');
+		expect(marzban.calls.setStatus).toBe(0);
+	});
+
+	it('cuts off a subscription the sweep has already marked expired', async () => {
+		const id = addSubscription(NOW - DAY_MS, 'expired');
+		seedPanel({ expiresAtMs: NOW - DAY_MS, status: 'active' });
+
+		await handler.handle({ subscriptionId: id });
+
+		expect((await fake.getUser(username))?.status).toBe('disabled');
+	});
+
+	/**
+	 * `limited` is Marzban's conclusion about the traffic quota — a thing this app does not track
+	 * between provisions. Flipping it to `active` would hand back an allowance the panel had already
+	 * spent, on a job whose remit is the expiry date.
+	 */
+	it('leaves a traffic-limited user alone rather than restoring their quota', async () => {
+		const id = addSubscription(NOW + 10 * DAY_MS);
+		seedPanel({ expiresAtMs: NOW + 10 * DAY_MS, status: 'limited' });
+
+		await handler.handle({ subscriptionId: id });
+
+		expect((await fake.getUser(username))?.status).toBe('limited');
+		expect(marzban.calls.setStatus).toBe(0);
+	});
+
+	/** `on_hold` is a start-date state we do not model; overruling it would be guessing. */
+	it('leaves an on-hold user alone', async () => {
+		const id = addSubscription(NOW + 10 * DAY_MS);
+		seedPanel({ expiresAtMs: NOW + 10 * DAY_MS, status: 'on_hold' });
+
+		await handler.handle({ subscriptionId: id });
+
+		expect((await fake.getUser(username))?.status).toBe('on_hold');
+		expect(marzban.calls.setStatus).toBe(0);
+	});
+
+	/** The expiry half still runs for a revoked row: the panel should hold our date either way. */
+	it('still corrects the date on a revoked subscription', async () => {
+		const id = addSubscription(NOW + 10 * DAY_MS, 'revoked');
+		seedPanel({ expiresAtMs: NOW + 99 * DAY_MS, status: 'active' });
+
+		await handler.handle({ subscriptionId: id });
+
+		expect((await fake.getUser(username))?.expiresAtMs).toBe(NOW + 10 * DAY_MS);
+	});
+
 	// --- idempotency (tech.md 6) ------------------------------------------------------------------
 
 	it('writes nothing at all when the two already agree', async () => {
