@@ -39,20 +39,20 @@ test.describe('home: plans from the database', () => {
 		await expect(page.getByRole('heading', { name: 'Тарифы', level: 2 })).toBeVisible();
 
 		// tech.md 11 puts имя, срок and цена on the card. The name is free text, so the duration has
-		// to be written out rather than read out of it.
+		// to be written out rather than read out of it — it rides a fact pill next to the traffic.
 		// Every assertion is scoped to its own card: a page-wide search would pass just as happily
 		// with all three prices rendered on one card.
 		for (const [name, days, price] of [
-			['7 дней', 'Доступ на 7 дней', '1,49'],
-			['30 дней', 'Доступ на 30 дней', '4,99'],
-			['90 дней', 'Доступ на 90 дней', '10,49']
+			['7 дней', '7 дней', '1,49'],
+			['30 дней', '30 дней', '4,99'],
+			['90 дней', '90 дней', '10,49']
 		]) {
 			const card = planCard(page, name);
 
 			await expect(card).toHaveCount(1);
-			await expect(card.getByText(days)).toBeVisible();
+			await expect(card.getByRole('listitem').filter({ hasText: days })).toBeVisible();
 			await expect(card.getByText(price, { exact: false })).toBeVisible();
-			await expect(card.getByText('Безлимитный трафик')).toBeVisible();
+			await expect(card.getByText('Безлимит')).toBeVisible();
 		}
 
 		// The seed prices 90 days well under three months of the 7-day rate, so it takes the badge.
@@ -158,8 +158,12 @@ test.describe.serial('admin: plan CRUD', () => {
 		await page.goto('/');
 		await openBuySheet(page);
 		await expect(page.getByRole('heading', { name: created, level: 3 })).toBeVisible();
-		await expect(page.getByText('10 ГБ трафика')).toBeVisible();
-		await expect(page.getByText('Доступ на 1 день')).toBeVisible();
+
+		// Scoped to the new card: the fact pills are short enough that a page-wide search for "10 ГБ"
+		// also matches whatever else in the deck happens to carry the same limit.
+		const created_ = planCard(page, created);
+		await expect(created_.getByRole('listitem').filter({ hasText: '10 ГБ' })).toBeVisible();
+		await expect(created_.getByRole('listitem').filter({ hasText: '1 день' })).toBeVisible();
 
 		// --- edit ---------------------------------------------------------------------------
 		await page.goto('/profile/admin');
