@@ -20,6 +20,7 @@ import { FakeTelegram, TelegramHttp, type TelegramApi } from './clients/telegram
 import { config } from './config';
 import { db } from './db';
 import { SubscriptionProvisionHandler } from './jobs/handlers/subscription-provision';
+import { SupportNotifyAdminHandler } from './jobs/handlers/support-notify-admin';
 import { TelegramSendMessageHandler } from './jobs/handlers/telegram-send-message';
 import { JobQueue } from './jobs/queue';
 import { JobWorker } from './jobs/worker';
@@ -27,6 +28,7 @@ import { log } from './log';
 import { PlanInputParser, PlanService } from './plans';
 import { RateLimiter } from './rate-limit';
 import { SubscriptionReader, SubscriptionService } from './subscriptions';
+import { FaqService, SupportTicketService, TicketInputParser } from './support';
 
 /**
  * Composition root: the ONE place that picks an implementation. Nothing below imports a sibling
@@ -144,6 +146,20 @@ export const paymentWebhooks = new PaymentWebhookService(db, orders, jobs, log, 
 	adminChatId: config.ADMIN_CHAT_ID
 });
 
+/** A13 — the FAQ is public and read-only: no clock, no currency, nothing to inject but the table. */
+export const faq = new FaqService(db);
+
+/**
+ * A14 — the queue comes in by constructor because a ticket and the job that relays it are written
+ * in one transaction: a request nobody is told about would be worse than a refused one.
+ *
+ * The three-per-hour limit lives inside this service rather than beside promoLimiter, and the
+ * reasoning is in ticket-service.ts: an hour-long window that a deploy resets is not a limit.
+ */
+export const tickets = new SupportTicketService(db, jobs);
+
+export const ticketInput = new TicketInputParser();
+
 export const subscriptions = new SubscriptionService(db);
 
 /** Read model for the pages: one person's access, assembled from three domains (A7, A9). */
@@ -154,6 +170,9 @@ const worker = new JobWorker(
 	[
 		new TelegramSendMessageHandler(telegram, log),
 		new SubscriptionProvisionHandler(orders, subscriptions, users, promos, marzban, jobs, log, {
+			adminChatId: config.ADMIN_CHAT_ID
+		}),
+		new SupportNotifyAdminHandler(tickets, users, telegram, log, {
 			adminChatId: config.ADMIN_CHAT_ID
 		})
 	],
