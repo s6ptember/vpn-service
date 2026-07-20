@@ -112,8 +112,15 @@ export class SubscriptionNotifyExpiryHandler extends JobHandler<'subscription.no
 		const plan = this.plans.findById(subscription.planId);
 		if (!plan) throw new Error(`subscription ${subscription.id} names a plan that is gone`);
 
-		// The whole idempotency guarantee, in one string (tech.md 6).
-		const dedupeKey = `expiry:${subscription.id}:${payload.daysLeft}`;
+		/**
+		 * The whole idempotency guarantee, in one string (tech.md 6).
+		 *
+		 * It carries `expiresAtMs` for the same reason the sweep's key does: without it the key names
+		 * a subscription rather than a term, and the renewal's message would be dropped by the unique
+		 * index one layer below the job that survived it. The recheck above has already established
+		 * that this row is still on the term the payload was scheduled for, so this is that term.
+		 */
+		const dedupeKey = `expiry:${subscription.id}:${expiresAtMs}:${payload.daysLeft}`;
 
 		this.jobs.enqueue(
 			'telegram.send_message',

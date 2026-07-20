@@ -89,7 +89,7 @@ describe('SubscriptionSweepHandler', () => {
 
 		expect(warnings()).toHaveLength(1);
 		expect(warnings()[0].payload).toEqual({ subscriptionId: id, daysLeft: 3 });
-		expect(warnings()[0].idempotencyKey).toBe(`expiry:${id}:3`);
+		expect(warnings()[0].idempotencyKey).toBe(`expiry:${id}:${NOW + 3 * DAY_MS}:3`);
 	});
 
 	it('schedules the warning one day out', async () => {
@@ -99,7 +99,7 @@ describe('SubscriptionSweepHandler', () => {
 
 		expect(warnings()).toHaveLength(1);
 		expect(warnings()[0].payload).toEqual({ subscriptionId: id, daysLeft: 1 });
-		expect(warnings()[0].idempotencyKey).toBe(`expiry:${id}:1`);
+		expect(warnings()[0].idempotencyKey).toBe(`expiry:${id}:${NOW + DAY_MS}:1`);
 	});
 
 	/**
@@ -155,7 +155,9 @@ describe('SubscriptionSweepHandler', () => {
 			warnings()
 				.map((row) => row.idempotencyKey)
 				.sort()
-		).toEqual([`expiry:${threeDays}:3`, `expiry:${oneDay}:1`].sort());
+		).toEqual(
+			[`expiry:${threeDays}:${NOW + 3 * DAY_MS}:3`, `expiry:${oneDay}:${NOW + DAY_MS}:1`].sort()
+		);
 	});
 
 	// --- idempotency (tech.md 6) ------------------------------------------------------------------
@@ -169,7 +171,7 @@ describe('SubscriptionSweepHandler', () => {
 		await handler.handle();
 
 		expect(warnings()).toHaveLength(1);
-		expect(warnings()[0].idempotencyKey).toBe(`expiry:${id}:3`);
+		expect(warnings()[0].idempotencyKey).toBe(`expiry:${id}:${NOW + 3 * DAY_MS}:3`);
 	});
 
 	/**
@@ -195,36 +197,35 @@ describe('SubscriptionSweepHandler', () => {
 		// Still one, even though the sweep ran a second time an hour later — and the mark held,
 		// because the subscription is now two days out and the 3-day key is already spent.
 		expect(warnings()).toHaveLength(1);
-		expect(warnings()[0].idempotencyKey).toBe(`expiry:${id}:3`);
+		expect(warnings()[0].idempotencyKey).toBe(`expiry:${id}:${NOW + 3 * DAY_MS}:3`);
 	});
 
 	/**
-	 * Documents a KNOWN DEFECT, deliberately, rather than asserting the behaviour we want.
+	 * The regression tech.md 6 gained its `expiresAtMs` component for (core v3).
 	 *
-	 * tech.md 6 fixes the key at `expiry:<subscriptionId>:<daysLeft>` and a subscription keeps its id
-	 * across renewals, so the second term recomputes a key the first term already spent and the
-	 * renewed person is never warned. The CONTRACT GAP is filed in subscription-sweep.ts; the key
-	 * cannot be changed here without inventing a contract (CLAUDE.md 0).
-	 *
-	 * The test exists so the gap is visible in the suite instead of latent in the queue, and so it
-	 * FAILS the day the contract is fixed — which is the reminder to delete it.
+	 * A subscription keeps its id across renewals and nothing purges the jobs table, so a key built
+	 * from the id alone is spent by the first term and silently drops every warning the person is
+	 * owed afterwards — for the rest of their life, not for one cycle. Two terms must produce four
+	 * warnings.
 	 */
-	it('does not warn a renewed subscription a second time — known gap, see CONTRACT GAP', async () => {
+	it('warns the renewed term too, on its own keys', async () => {
 		const id = addSubscription(NOW + 3 * DAY_MS);
+		const firstTermEnd = NOW + 3 * DAY_MS;
 
 		await handler.handle();
 		clock.advance(2 * DAY_MS);
 		await handler.handle();
 		expect(warnings()).toHaveLength(2);
 
-		// The person renews for another 30 days; the row keeps its id.
+		// The person renews for another 30 days. The row keeps its id; only the date moves.
+		const renewedEnd = clock.now() + 30 * DAY_MS;
 		subscriptions.upsert({
 			userId: subscriptions.findById(id)!.userId,
 			planId,
-			marzbanUsername: `tg_renewed`,
-			subscriptionUrl: 'https://sub.local/sub/tg_renewed',
+			marzbanUsername: subscriptions.findById(id)!.marzbanUsername,
+			subscriptionUrl: subscriptions.findById(id)!.subscriptionUrl,
 			startsAtMs: NOW,
-			expiresAtMs: clock.now() + 30 * DAY_MS,
+			expiresAtMs: renewedEnd,
 			status: 'active'
 		});
 
@@ -234,8 +235,12 @@ describe('SubscriptionSweepHandler', () => {
 		clock.advance(2 * DAY_MS);
 		await handler.handle();
 
-		// Four warnings would be right. Two is what the contract's key shape produces.
-		expect(warnings()).toHaveLength(2);
+		expect(warnings().map((row) => row.idempotencyKey)).toEqual([
+			`expiry:${id}:${firstTermEnd}:3`,
+			`expiry:${id}:${firstTermEnd}:1`,
+			`expiry:${id}:${renewedEnd}:3`,
+			`expiry:${id}:${renewedEnd}:1`
+		]);
 	});
 
 	/**
@@ -250,8 +255,8 @@ describe('SubscriptionSweepHandler', () => {
 		await handler.handle();
 
 		expect(warnings().map((row) => row.idempotencyKey)).toEqual([
-			`expiry:${id}:3`,
-			`expiry:${id}:1`
+			`expiry:${id}:${NOW + 3 * DAY_MS}:3`,
+			`expiry:${id}:${NOW + 3 * DAY_MS}:1`
 		]);
 	});
 });

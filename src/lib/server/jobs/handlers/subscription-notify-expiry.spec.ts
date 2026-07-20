@@ -112,8 +112,8 @@ describe('SubscriptionNotifyExpiryHandler', () => {
 
 		await handler.handle({ subscriptionId: id, daysLeft: 3 });
 
-		expect(payloadOf(messages()[0]).dedupeKey).toBe(`expiry:${id}:3`);
-		expect(messages()[0].idempotencyKey).toBe(`tg:expiry:${id}:3`);
+		expect(payloadOf(messages()[0]).dedupeKey).toBe(`expiry:${id}:${NOW + 3 * DAY_MS}:3`);
+		expect(messages()[0].idempotencyKey).toBe(`tg:expiry:${id}:${NOW + 3 * DAY_MS}:3`);
 	});
 
 	// --- idempotency (tech.md 6) ------------------------------------------------------------------
@@ -137,7 +137,7 @@ describe('SubscriptionNotifyExpiryHandler', () => {
 		queue.enqueue(
 			'subscription.notify_expiry',
 			{ subscriptionId: id, daysLeft: 3 },
-			`expiry:${id}:3`
+			`expiry:${id}:${NOW + 3 * DAY_MS}:3`
 		);
 		await handler.handle({ subscriptionId: id, daysLeft: 3 });
 
