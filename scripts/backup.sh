@@ -97,7 +97,14 @@ mv "$MARZBAN_OUT.partial" "$MARZBAN_OUT"
 
 # tech.md 3: fourteen days. Only this script's own artefacts are matched — a stray file in the
 # directory is somebody else's and is not this script's to delete.
-find "$BACKUP_DIR" -maxdepth 1 -type f -name 'app-*.db' -mtime "+$KEEP_DAYS" -delete
-find "$BACKUP_DIR" -maxdepth 1 -type f -name 'marzban-*.tar.gz' -mtime "+$KEEP_DAYS" -delete
+#
+# `.partial` is swept on the same clock. A run that dies between the copy and the integrity check
+# leaves one behind, and the failure path above keeps one deliberately so it can be inspected — but
+# "kept for inspection" has to mean a fortnight, not forever. It holds the same database as a
+# finished backup and would otherwise be the one file in here nobody ever cleans up.
+find "$BACKUP_DIR" -maxdepth 1 -type f \
+	\( -name 'app-*.db' -o -name 'app-*.db.partial' \
+	-o -name 'marzban-*.tar.gz' -o -name 'marzban-*.tar.gz.partial' \) \
+	-mtime "+$KEEP_DAYS" -delete
 
 echo "backup: wrote $DB_OUT and $MARZBAN_OUT, kept $KEEP_DAYS days"

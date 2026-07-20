@@ -32,8 +32,19 @@ export interface JobSchedulerOptions {
  * and would still be wrong the first time somebody restored a backup.
  *
  * Windows are skipped rather than caught up when the process was down: `floor(now / window)` names
- * only the window we are in. That is correct for a sweep, which is convergent — one run over a
- * lapsed subscription does what ten would (subscriptions/subscription-service.ts, expireLapsed).
+ * only the window we are in.
+ *
+ * That is harmless for half of what the sweep does and not for the other half, which is worth being
+ * precise about. Expiring lapsed subscriptions is convergent — one run does what ten would
+ * (subscriptions/subscription-service.ts, expireLapsed), so a missed window costs only latency. The
+ * warnings are not: they are edge-triggered on `daysLeft` being exactly 3 or exactly 1, each of
+ * which is true for a 24-hour stretch. An outage inside such a stretch is caught up by the next
+ * tick, but an outage longer than 24 hours steps over the mark entirely and that warning is never
+ * sent.
+ *
+ * Catching up would mean replaying windows, which for an edge trigger sampled at `now` would not
+ * recover the mark either — the fix for a day-long outage is the outage not happening. Recorded here
+ * so the next reader does not mistake "convergent" for a property of the whole job.
  */
 export class JobScheduler {
 	private readonly now: () => number;
