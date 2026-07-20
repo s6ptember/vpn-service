@@ -126,6 +126,22 @@ export class SupportTicketService {
 	}
 
 	/**
+	 * The newest requests, for the admin panel (A16, tech.md 11). Rows, not views: the view needs the
+	 * author beside the ticket and the join belongs to whoever assembles it, not to this table's
+	 * owner.
+	 *
+	 * Bounded by default — "последние обращения" is a screen, not an export.
+	 */
+	listRecent(limit = 20): SupportTicketRow[] {
+		return this.db
+			.select()
+			.from(supportTickets)
+			.orderBy(desc(supportTickets.createdAt), desc(supportTickets.id))
+			.limit(limit)
+			.all();
+	}
+
+	/**
 	 * The message reached the admin. `adminMessageId` is the thread back to it (tech.md 6) and is
 	 * what makes the delivered state provable rather than merely claimed — so the two columns and
 	 * the status are always written by this one statement, never apart.

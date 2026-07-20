@@ -1,4 +1,4 @@
-import { and, asc, eq, lte } from 'drizzle-orm';
+import { and, asc, desc, eq, lte } from 'drizzle-orm';
 import type { JobMap, JobType } from '$lib/types';
 import type { Db } from '$lib/server/db/client';
 import { jobs, type JobRow } from '$lib/server/db/schema';
@@ -168,6 +168,24 @@ export class JobQueue {
 			.from(jobs)
 			.where(eq(jobs.status, 'running'))
 			.orderBy(asc(jobs.id))
+			.all();
+	}
+
+	/**
+	 * Jobs that ran out of attempts, most recently failed first (A16). `updatedAt` is the moment of
+	 * the last attempt, which is what an admin scanning the panel is actually ordering by — `runAt`
+	 * on a terminal row is frozen at whenever the last retry had been scheduled for.
+	 *
+	 * Bounded by default: a queue that has been failing for a week must not turn the admin screen
+	 * into a several-thousand-row render.
+	 */
+	listFailed(limit = 20): JobRow[] {
+		return this.db
+			.select()
+			.from(jobs)
+			.where(eq(jobs.status, 'failed'))
+			.orderBy(desc(jobs.updatedAt), desc(jobs.id))
+			.limit(limit)
 			.all();
 	}
 }
