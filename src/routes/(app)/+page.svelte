@@ -1,20 +1,29 @@
 <script lang="ts">
-	import { untrack } from 'svelte';
-	import { ChevronDown } from 'lucide-svelte';
+	import { getContext, untrack } from 'svelte';
 	import type { SubmitFunction } from '@sveltejs/kit';
+	import { goto } from '$app/navigation';
+	import { resolve } from '$app/paths';
 	import { checkoutWatcher, consumeCheckoutReturn } from '$lib/client/checkout.svelte';
 	import { openExternal } from '$lib/client/open-link';
 	import { haptic } from '$lib/client/telegram-haptics';
 	import { webApp } from '$lib/client/telegram-webapp';
+	import { TELEGRAM_SESSION_KEY, type TelegramSession } from '$lib/client/telegram.svelte';
+	import Button from '$lib/ui/Button.svelte';
 	import EmptyState from '$lib/ui/EmptyState.svelte';
 	import Input from '$lib/ui/Input.svelte';
+	import Sheet from '$lib/ui/Sheet.svelte';
 	import { toasts } from '$lib/ui/toasts.svelte';
 	import CheckoutStatus from './CheckoutStatus.svelte';
+	import CurrentPlanCard from './CurrentPlanCard.svelte';
+	import FeaturePills from './FeaturePills.svelte';
 	import PlanCard from './PlanCard.svelte';
 	import { bestValuePlanId } from './plan-value';
+	import WelcomeHeader from './WelcomeHeader.svelte';
 	import type { PageProps } from './$types';
 
 	let { data, form }: PageProps = $props();
+
+	const session = getContext<TelegramSession>(TELEGRAM_SESSION_KEY);
 
 	let bestId = $derived(bestValuePlanId(data.plans));
 
@@ -24,8 +33,15 @@
 	/** A failed checkout leaves a message on `form`; it must not sit under the next attempt's banner. */
 	let errorDismissed = $state(false);
 
-	/** tech.md 10, step 1: optional, and posted with whichever plan is bought. */
+	/** tech.md 10, step 1: optional, and posted with whichever plan is bought. Typed in its own sheet
+	 *  now, but it is one field shared by both sheets — whichever plan is bought carries it. */
 	let promoCode = $state('');
+
+	// Open already if a no-JS submit came back with a refusal on this very load — the banner lives
+	// inside the sheet now, and a closed sheet would hide the one thing this reload has to say.
+	// untrack: only the value form carries on THIS load matters, same as PromoBlock's seed.
+	let buySheetOpen = $state(untrack(() => Boolean(form?.message)));
+	let promoSheetOpen = $state(false);
 
 	const watcher = checkoutWatcher;
 
@@ -64,6 +80,32 @@
 		});
 	});
 
+	/** Only one sheet is ever meant to be on screen; opening one puts the other away first. */
+	function openBuy() {
+		haptic();
+		promoSheetOpen = false;
+		buySheetOpen = true;
+	}
+
+	function openPromo() {
+		haptic();
+		buySheetOpen = false;
+		promoSheetOpen = true;
+	}
+
+	/**
+	 * Before a purchase there is nothing to install yet, so this opens the same sheet Купить does. A
+	 * live subscription sends the person to the real instructions instead (routes/(app)/setup).
+	 */
+	function openSetup() {
+		haptic();
+		if (data.subscription?.status === 'active') {
+			goto(resolve('/setup'));
+		} else {
+			openBuy();
+		}
+	}
+
 	const startCheckout: SubmitFunction = ({ formData }) => {
 		submittingPlanId = Number(formData.get('planId'));
 		// Whatever the last attempt complained about is about to stop being true.
@@ -87,6 +129,7 @@
 				 * they never saw.
 				 */
 				if (openExternal(result.data.url)) {
+					buySheetOpen = false;
 					// The id matters: `data` still holds the PREVIOUS order, which may well be paid.
 					watcher.start(orderId);
 				} else {
@@ -103,59 +146,48 @@
 </script>
 
 <svelte:head>
-	<title>Тарифы — VPN</title>
+	<title>Главная — VPN</title>
 </svelte:head>
 
 <div class="px-4 pt-[max(16px,env(safe-area-inset-top))] pb-28">
-	<h1 class="text-[28px] font-bold tracking-[-.02em]">Тарифы</h1>
+	<WelcomeHeader name={session.user?.firstName ?? null} />
 
 	<CheckoutStatus {phase} paid={watcher.paid} ondismiss={() => watcher.dismiss()} />
 
+	<CurrentPlanCard
+		subscription={data.subscription}
+		plan={data.plan}
+		trafficUsedBytes={data.trafficUsedBytes}
+		onbuy={openBuy}
+		onsetup={openSetup}
+		onpromo={openPromo}
+	/>
+
+	<FeaturePills />
+</div>
+
+<Sheet bind:open={buySheetOpen} title="Тарифы">
+	<!-- Lives inside the sheet, not the page behind it: a refusal happens while buying, and the
+	     sheet's own backdrop would otherwise sit on top of a banner rendered underneath it. -->
 	{#if form?.message && !errorDismissed}
-		<p class="mt-4 rounded-card bg-surface p-4 text-[14px] text-danger-700" role="alert">
+		<p class="mb-3 rounded-card bg-surface p-4 text-[14px] text-danger-700" role="alert">
 			{form.message}
 		</p>
 	{/if}
 
 	{#if data.plans.length === 0}
-		<div class="mt-4">
-			<EmptyState
-				title="Тарифов пока нет"
-				description="Мы готовим их прямо сейчас. Загляните чуть позже."
-			/>
-		</div>
+		<EmptyState
+			title="Тарифов пока нет"
+			description="Мы готовим их прямо сейчас. Загляните чуть позже."
+		/>
 	{:else}
-		<!--
-			tech.md 10, step 1: the plan and the code go up together, in one submit. Folded away by
-			default — most purchases have no code, and an empty field over the deck invites everyone to
-			hunt for one they were never given.
-		-->
-		<details class="group mt-4">
-			<summary class="flex cursor-pointer list-none items-center gap-1.5 px-1 text-[14px] press">
-				У меня есть промокод
-				<ChevronDown
-					class="size-4 text-muted transition-transform group-open:rotate-180 motion-reduce:transition-none"
-					aria-hidden="true"
-				/>
-			</summary>
+		{#if promoCode}
+			<p class="mb-3 px-1 text-[13px] text-muted">
+				Промокод <span class="font-semibold text-ink">{promoCode}</span> применится к покупке.
+			</p>
+		{/if}
 
-			<div class="mt-2.5">
-				<Input
-					bind:value={promoCode}
-					aria-label="Промокод"
-					placeholder="Промокод"
-					maxlength={32}
-					uppercase
-				/>
-				<p class="mt-2 px-1 text-[13px] text-muted">
-					<!-- Honest about where the number appears: the discount is applied when the order is
-					     priced, and the amount charged is on the payment page. -->
-					Скидка применится к выбранному тарифу на странице оплаты.
-				</p>
-			</div>
-		</details>
-
-		<div class="mt-4 space-y-3">
+		<div class="space-y-3">
 			{#each data.plans as plan (plan.id)}
 				<PlanCard
 					{plan}
@@ -169,6 +201,24 @@
 			{/each}
 		</div>
 
-		<p class="mt-4 text-center text-[13px] text-muted">Ключ придёт сразу после оплаты</p>
+		<p class="mt-4 pb-1 text-center text-[13px] text-muted">Ключ придёт сразу после оплаты</p>
 	{/if}
-</div>
+</Sheet>
+
+<Sheet bind:open={promoSheetOpen} title="Промокод">
+	<Input
+		bind:value={promoCode}
+		aria-label="Промокод"
+		placeholder="Промокод"
+		maxlength={32}
+		uppercase
+	/>
+	<p class="mt-2 px-1 text-[13px] text-muted">
+		<!-- Honest about where the number appears: the discount is applied when the order is priced,
+		     and the amount charged is on the payment page. -->
+		Скидка применится к выбранному тарифу на странице оплаты.
+	</p>
+	<Button class="mt-4 w-full" variant="ghost" onclick={() => (promoSheetOpen = false)}>
+		Готово
+	</Button>
+</Sheet>
