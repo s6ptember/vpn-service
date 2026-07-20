@@ -67,6 +67,32 @@ export const handle: Handle = async ({ event, resolve }) => {
 	response.headers.set('x-content-type-options', 'nosniff');
 	response.headers.set('referrer-policy', 'strict-origin-when-cross-origin');
 
+	/**
+	 * A17 — nothing in this app uses any of these, and a mini app runs inside somebody else's WebView
+	 * where a permission prompt has no visible source. Denying them outright costs nothing and takes
+	 * the whole class off the table.
+	 *
+	 * `payment=()` is safe despite the name: Stripe Checkout opens in the external browser
+	 * (tech.md 10), not in this document, so the Payment Request API is never called here.
+	 */
+	response.headers.set(
+		'permissions-policy',
+		'camera=(), microphone=(), geolocation=(), payment=(), usb=(), interest-cohort=()'
+	);
+
+	/**
+	 * A17 — a page rendered for a signed-in person carries their name, their subscription link and
+	 * their purchase history. The subscription URL is the credential to the VPN itself, so a copy
+	 * left in a shared or proxy cache is a leak, not a stale render.
+	 *
+	 * Narrow on purpose. It keys off the response actually being HTML rather than off the route, so
+	 * hashed assets keep their long cache; and off `locals.user`, so the anonymous first render — the
+	 * one every visitor gets before the cookie exists (tech.md 9) — stays cacheable.
+	 */
+	if (event.locals.user && response.headers.get('content-type')?.includes('text/html')) {
+		response.headers.set('cache-control', 'no-store');
+	}
+
 	return response;
 };
 

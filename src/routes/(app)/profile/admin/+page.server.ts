@@ -1,23 +1,39 @@
 import { fail } from '@sveltejs/kit';
 import { config } from '$lib/server/config';
-import { planInput, plans, promoInput, promos } from '$lib/server/container';
+import {
+	jobs,
+	planInput,
+	plans,
+	promoInput,
+	promos,
+	reconcileInput,
+	subscriptions,
+	tickets,
+	users
+} from '$lib/server/container';
+import { toFailedJobView } from '$lib/server/jobs/job-view';
 import { log } from '$lib/server/log';
+import { toTicketAdminView } from '$lib/server/support';
 import type { Actions, PageServerLoad } from './$types';
 
 /**
- * A4 — plans CRUD, A11 — promo codes CRUD. Mutations go through form actions rather than hand-rolled
- * endpoints, so CSRF by Origin, no-JS submits and one validation path come for free (CLAUDE.md 1.5).
+ * A4 — plans CRUD, A11 — promo codes CRUD, A16 — operations. Mutations go through form actions rather
+ * than hand-rolled endpoints, so CSRF by Origin, no-JS submits and one validation path come for free
+ * (CLAUDE.md 1.5).
  */
+
+/** tech.md 6: the reconcile key buckets by the hour, so a double-tap inside one costs nothing. */
+const RECONCILE_WINDOW_MS = 3_600_000;
 
 /**
  * Which form the answer belongs to.
  *
  * `kind` is not decoration: plans and promo codes have independent id sequences, so an answer about
  * promo 3 would otherwise land on the card for plan 3 — a save reported under a row that was never
- * touched. `id` is null for the two create forms.
+ * touched. `id` is null for the two create forms and for reconcile, which has exactly one form.
  */
 interface Target {
-	kind: 'plan' | 'promo';
+	kind: 'plan' | 'promo' | 'reconcile';
 	id: number | null;
 }
 
@@ -56,6 +72,7 @@ const ok = (target: Target, message: string): ActionResult => ({
 
 const plan = (id: number | null): Target => ({ kind: 'plan', id });
 const promo = (id: number | null): Target => ({ kind: 'promo', id });
+const reconcile = (): Target => ({ kind: 'reconcile', id: null });
 
 /**
  * The guard in hooks.server.ts already 403s a signed-in non-admin, and the shell still renders for a
@@ -70,6 +87,25 @@ export const load: PageServerLoad = async ({ locals }) => ({
 	 * that has not proved who it belongs to.
 	 */
 	promoCodes: isAdmin(locals) ? promos.listEditable() : [],
+	/**
+	 * A16 — the operations half of the panel (tech.md 11). Gated like everything above it: a request
+	 * that has not proved who it belongs to gets empty lists, not a queue's failure history.
+	 *
+	 * The join to the author happens here rather than in the reader, because `listRecent` owns one
+	 * table and the view needs two. Bounded to twenty rows, so this is twenty lookups by primary key.
+	 */
+	tickets: isAdmin(locals)
+		? tickets
+				.listRecent()
+				.map((ticket) => {
+					const author = users.findById(ticket.userId);
+					// A ticket whose author is gone cannot be answered, so it has no place on a screen
+					// whose purpose is answering. Rows are never deleted, so this stays theoretical.
+					return author ? toTicketAdminView(ticket, author) : null;
+				})
+				.filter((view) => view !== null)
+		: [],
+	failedJobs: isAdmin(locals) ? jobs.listFailed().map(toFailedJobView) : [],
 	// One currency for the whole base (tech.md 5). The form shows it; it never submits it.
 	currency: config.PRICE_CURRENCY
 });
@@ -315,5 +351,77 @@ export const actions = {
 		log.info('admin_promo_archived', { requestId: locals.requestId, promoCodeId: id.value });
 
 		return ok(promo(id.value), `Промокод «${archived.value.code}» в архиве.`);
+	},
+
+	/**
+	 * A16 — queues a manual `marzban.reconcile` (tech.md 6, tech.md 11).
+	 *
+	 * The action does no reconciling itself, deliberately: talking to the panel inside a form submit
+	 * would make the admin wait on a network call that has a retry policy of its own, and a Marzban
+	 * timeout would come back as a failed save rather than as a job the queue will finish. So this
+	 * resolves the person, enqueues, and answers.
+	 *
+	 * The Telegram id is the thing an admin can actually see (subscriptions/input.ts explains why),
+	 * and the subscription id the contract keys on is derived here.
+	 */
+	reconcile: async ({ request, locals }) => {
+		if (!isAdmin(locals)) return forbidden();
+
+		const values = formValues(await request.formData());
+		const parsed = reconcileInput.parse(values);
+
+		if (!parsed.ok) {
+			return fail(400, {
+				target: reconcile(),
+				ok: false,
+				message: null,
+				errors: parsed.error,
+				values
+			} satisfies ActionResult);
+		}
+
+		const person = users.findByTelegramId(parsed.value.telegramId);
+
+		if (!person) {
+			return fail(404, {
+				target: reconcile(),
+				ok: false,
+				message: null,
+				errors: { telegramId: 'Telegram ID: такого человека нет' },
+				values
+			} satisfies ActionResult);
+		}
+
+		const subscription = subscriptions.findByUser(person.id);
+
+		if (!subscription) {
+			return fail(409, {
+				target: reconcile(),
+				ok: false,
+				message: 'У этого человека нет подписки — сверять нечего.',
+				errors: {},
+				values
+			} satisfies ActionResult);
+		}
+
+		/**
+		 * tech.md 6 buckets this key by the hour, so a second click inside one is silently dropped by
+		 * the unique index. The copy below says the work is queued rather than claiming it is new:
+		 * the insert cannot report which of the two happened, and promising a fresh run we did not
+		 * start would be worse than saying less.
+		 */
+		const hour = Math.floor(Date.now() / RECONCILE_WINDOW_MS);
+		jobs.enqueue(
+			'marzban.reconcile',
+			{ subscriptionId: subscription.id },
+			`reconcile:${subscription.id}:${hour}`
+		);
+
+		log.info('admin_reconcile_queued', {
+			requestId: locals.requestId,
+			subscriptionId: subscription.id
+		});
+
+		return ok(reconcile(), 'Сверка поставлена в очередь. Результат появится в логе.');
 	}
 } satisfies Actions;

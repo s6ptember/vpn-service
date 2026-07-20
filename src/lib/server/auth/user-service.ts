@@ -66,4 +66,13 @@ export class UserService {
 	findById(id: number): UserRow | null {
 		return this.db.select().from(users).where(eq(users.id, id)).get() ?? null;
 	}
+
+	/**
+	 * By the Telegram account, which is the natural key (tech.md 5) and the only id an admin ever
+	 * sees: it is what the relayed support message prints when somebody has no @username, and the
+	 * reconcile form in the panel takes it (A16).
+	 */
+	findByTelegramId(telegramId: number): UserRow | null {
+		return this.db.select().from(users).where(eq(users.telegramId, telegramId)).get() ?? null;
+	}
 }

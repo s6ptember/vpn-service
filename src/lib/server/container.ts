@@ -19,15 +19,19 @@ import { FakePayments, StripePayments, type PaymentProvider } from './clients/pa
 import { FakeTelegram, TelegramHttp, type TelegramApi } from './clients/telegram';
 import { config } from './config';
 import { db } from './db';
+import { MarzbanReconcileHandler } from './jobs/handlers/marzban-reconcile';
+import { SubscriptionNotifyExpiryHandler } from './jobs/handlers/subscription-notify-expiry';
 import { SubscriptionProvisionHandler } from './jobs/handlers/subscription-provision';
+import { SubscriptionSweepHandler } from './jobs/handlers/subscription-sweep';
 import { SupportNotifyAdminHandler } from './jobs/handlers/support-notify-admin';
 import { TelegramSendMessageHandler } from './jobs/handlers/telegram-send-message';
 import { JobQueue } from './jobs/queue';
+import { JobScheduler } from './jobs/scheduler';
 import { JobWorker } from './jobs/worker';
 import { log } from './log';
 import { PlanInputParser, PlanService } from './plans';
 import { RateLimiter } from './rate-limit';
-import { SubscriptionReader, SubscriptionService } from './subscriptions';
+import { ReconcileInputParser, SubscriptionReader, SubscriptionService } from './subscriptions';
 import { FaqService, SupportTicketService, TicketInputParser } from './support';
 
 /**
@@ -162,6 +166,9 @@ export const ticketInput = new TicketInputParser();
 
 export const subscriptions = new SubscriptionService(db);
 
+/** A16 — the panel resolves the Telegram id an admin can see into the subscription id the job wants. */
+export const reconcileInput = new ReconcileInputParser();
+
 /** Read model for the pages: one person's access, assembled from three domains (A7, A9). */
 export const access = new SubscriptionReader(subscriptions, orders, plans);
 
@@ -174,11 +181,22 @@ const worker = new JobWorker(
 		}),
 		new SupportNotifyAdminHandler(tickets, users, telegram, log, {
 			adminChatId: config.ADMIN_CHAT_ID
-		})
+		}),
+		// A15 — the sweep closes lapsed terms; the notice it schedules is a second, retryable job.
+		new SubscriptionSweepHandler(subscriptions, jobs, log),
+		new SubscriptionNotifyExpiryHandler(subscriptions, users, plans, jobs, log),
+		// A16 — run by hand from the panel, never on a timer: the local row is the leading side.
+		new MarzbanReconcileHandler(subscriptions, marzban, log)
 	],
 	log,
 	{ adminChatId: config.ADMIN_CHAT_ID }
 );
+
+/**
+ * A15 — the only recurring job in tech.md 6. It shares the queue with the worker, so a restart
+ * inside a five-minute window creates no duplicate: the key is the window (jobs/scheduler.ts).
+ */
+const scheduler = new JobScheduler(jobs);
 
 /**
  * One process, one worker (tech.md 3: exactly one replica, SQLite plus an in-process worker).
@@ -186,8 +204,11 @@ const worker = new JobWorker(
  */
 export function startWorker(): void {
 	worker.start();
+	scheduler.start();
 }
 
 export function stopWorker(): void {
+	// Stop producing before stopping the consumer, so nothing is enqueued after the last drain.
+	scheduler.stop();
 	worker.stop();
 }

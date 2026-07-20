@@ -1,0 +1,22 @@
+# A17 — host crontab for the nightly backup (tech.md 3). Install with:
+#
+#   sudo install -m 700 scripts/backup.sh /usr/local/bin/vpn-backup
+#   sudo crontab -e        # then paste the line below
+#
+# Root, because the docker volume mountpoints under /var/lib/docker are root-owned.
+#
+# 04:17 rather than 04:00: every cron entry on every host fires on the hour, and the database is
+# smallest and quietest when nothing else is competing for the disk.
+#
+# Output goes to a log rather than to mail — a silent failure is the whole risk with backups, and
+# this is the file to check when a restore is ever needed.
+
+17 4 * * * /usr/local/bin/vpn-backup >> /var/log/vpn-backup.log 2>&1
+
+# Verify a backup is restorable BEFORE you need it. Roughly monthly, on a copy, never in place:
+#
+#   sqlite3 /var/backups/vpn-service/app-YYYY-MM-DD.db 'PRAGMA integrity_check; SELECT count(*) FROM orders;'
+#
+# And confirm the rotation is actually rotating rather than the directory quietly filling up:
+#
+#   ls -la /var/backups/vpn-service | tail

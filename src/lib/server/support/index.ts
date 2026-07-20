@@ -9,3 +9,4 @@ export {
 	type SupportTicketServiceOptions,
 	type TicketRateLimited
 } from './ticket-service';
+export { toTicketAdminView, type TicketAdminView } from './ticket-view';

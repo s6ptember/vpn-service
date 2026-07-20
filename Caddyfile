@@ -10,13 +10,27 @@
 #   out of the frame, which is the same outage by another route. The app owns this header.
 #
 # Both look like obvious wins from a proxy config and are both outages. Leave them alone.
+#
+# HSTS is the exception and belongs HERE rather than in the app: caddy terminates TLS, so it is the
+# only party that knows the connection was HTTPS at all. The app sits behind it on plain HTTP.
 
 {
 	# ACME notifications and expiry warnings. Replace before launch.
 	email admin@example.com
 }
 
+# A17 — one year, subdomains included. Both hosts are HTTPS-only and caddy already redirects :80,
+# but the redirect is one plaintext round trip a network can intercept; HSTS removes it after the
+# first visit.
+#
+# `preload` is deliberately NOT set: it is a one-way door, submitted out of band, and it would bind
+# every future subdomain of this apex to HTTPS forever. Add it once the domains are settled.
+(hsts) {
+	header Strict-Transport-Security "max-age=31536000; includeSubDomains"
+}
+
 app.example.com {
+	import hsts
 	encode zstd gzip
 
 	# The only way into the app: it never publishes 3000 to the host.
@@ -26,6 +40,7 @@ app.example.com {
 }
 
 sub.example.com {
+	import hsts
 	encode zstd gzip
 
 	# Clients need their subscription link and nothing else. The panel, /api and /dashboard stay on

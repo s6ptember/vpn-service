@@ -7,13 +7,32 @@
 	import EmptyState from '$lib/ui/EmptyState.svelte';
 	import Modal from '$lib/ui/Modal.svelte';
 	import Money from '$lib/ui/Money.svelte';
-	import { formatDateUtc } from '../../dates';
+	import type { TicketStatus } from '$lib/types';
+	import { formatDate, formatDateUtc } from '../../dates';
 	import { formatDays, formatTraffic } from '../../plan-value';
 	import PlanForm from './PlanForm.svelte';
 	import PromoForm from './PromoForm.svelte';
+	import ReconcileForm from './ReconcileForm.svelte';
 	import type { PageProps } from './$types';
 
 	let { data, form }: PageProps = $props();
+
+	/**
+	 * A16 — how a ticket's state reads to an admin. Both maps are keyed by the union from
+	 * `$lib/types`, so a status added to the contract fails the typecheck here instead of rendering
+	 * as a blank badge (CLAUDE.md 4: no status literals loose in the markup).
+	 */
+	const TICKET_LABEL: Record<TicketStatus, string> = {
+		new: 'В очереди',
+		delivered: 'Доставлено',
+		failed: 'Не дошло'
+	};
+
+	const TICKET_TONE: Record<TicketStatus, 'neutral' | 'success' | 'danger'> = {
+		new: 'neutral',
+		delivered: 'success',
+		failed: 'danger'
+	};
 
 	let creating = $state(false);
 	let creatingPromo = $state(false);
@@ -26,7 +45,7 @@
 	 * are compared — plans and promo codes number themselves independently, so an answer about promo 3
 	 * must not surface under plan 3.
 	 */
-	const answerFor = (kind: 'plan' | 'promo', id: number | null) =>
+	const answerFor = (kind: 'plan' | 'promo' | 'reconcile', id: number | null) =>
 		form?.target.kind === kind && form.target.id === id ? form : null;
 
 	let listed = $derived(new Set(data.plans.map((plan) => plan.id)));
@@ -41,11 +60,21 @@
 		if (!form) return true;
 
 		const { kind, id } = form.target;
-		if (kind === 'plan') return id === null ? creating : listed.has(id);
-		return id === null ? creatingPromo : listedPromos.has(id);
+		switch (kind) {
+			case 'plan':
+				return id === null ? creating : listed.has(id);
+			case 'promo':
+				return id === null ? creatingPromo : listedPromos.has(id);
+			// The reconcile form is always on screen, so its answer always has somewhere to land.
+			case 'reconcile':
+				return true;
+		}
 	});
 
 	let banner = $derived(answerHasHome ? null : (form?.message ?? null));
+
+	/** The reconcile section has one form, so its answer needs no id to be routed by. */
+	let reconcileAnswer = $derived(answerFor('reconcile', null));
 
 	/** Red is for refusals. A confirmation in the error colour reads as a failure. */
 	const tone = (ok: boolean) => (ok ? 'text-muted' : 'text-danger-700');
@@ -347,6 +376,112 @@
 
 	<p class="mt-4 px-1 text-[13px] text-muted">
 		Использование засчитывается после оплаты. Один промокод применяется один раз на человека.
+	</p>
+
+	<!-- A16 — operations: what people asked, what broke, and the one repair an admin can run. -->
+	<h2 class="mt-8 px-1 text-[12px] font-semibold tracking-[.06em] text-muted uppercase">
+		Обращения
+	</h2>
+
+	{#if data.tickets.length === 0}
+		<div class="mt-3">
+			<EmptyState
+				title="Обращений нет"
+				description="Здесь появятся последние письма из поддержки."
+			/>
+		</div>
+	{:else}
+		<div class="mt-3 space-y-3">
+			{#each data.tickets as ticket (ticket.id)}
+				<Card>
+					<div class="flex items-start justify-between gap-3">
+						<div class="min-w-0">
+							<div class="flex flex-wrap items-center gap-2">
+								<h3 class="text-[15px] leading-none font-semibold">#{ticket.id}</h3>
+								<Badge tone={TICKET_TONE[ticket.status]}>{TICKET_LABEL[ticket.status]}</Badge>
+							</div>
+							<p class="mt-1.5 text-[13px] text-muted">
+								{ticket.author.name}
+								{#if ticket.author.username}
+									· @{ticket.author.username}
+								{:else}
+									· ID {ticket.author.telegramId}
+								{/if}
+							</p>
+						</div>
+						<p class="shrink-0 text-[13px] text-muted tabular-nums">
+							{formatDate(ticket.createdAt)}
+						</p>
+					</div>
+
+					<p class="mt-3 text-[14px] break-words">{ticket.excerpt}</p>
+				</Card>
+			{/each}
+		</div>
+	{/if}
+
+	<p class="mt-4 px-1 text-[13px] text-muted">
+		Текст письма целиком приходит в личку — здесь только начало, чтобы узнать обращение.
+	</p>
+
+	<h2 class="mt-8 px-1 text-[12px] font-semibold tracking-[.06em] text-muted uppercase">
+		Упавшие джобы
+	</h2>
+
+	{#if data.failedJobs.length === 0}
+		<div class="mt-3">
+			<EmptyState
+				title="Упавших джобов нет"
+				description="Очередь разобрала всё, что в неё клали."
+			/>
+		</div>
+	{:else}
+		<div class="mt-3 space-y-3">
+			{#each data.failedJobs as job (job.id)}
+				<Card>
+					<div class="flex items-start justify-between gap-3">
+						<div class="min-w-0">
+							<h3 class="text-[15px] leading-none font-semibold break-all">{job.type}</h3>
+							<p class="mt-1.5 text-[13px] text-muted tabular-nums">
+								#{job.id} · попыток {job.attempts} из {job.maxAttempts}
+							</p>
+						</div>
+						<p class="shrink-0 text-[13px] text-muted tabular-nums">{formatDate(job.updatedAt)}</p>
+					</div>
+
+					{#if job.lastError}
+						<p class="mt-3 text-[13px] break-words text-danger-700">{job.lastError}</p>
+					{/if}
+				</Card>
+			{/each}
+		</div>
+	{/if}
+
+	<p class="mt-4 px-1 text-[13px] text-muted">
+		Джоб попадает сюда, когда кончились попытки. Перезапуск из панели не предусмотрен — почините
+		причину и поставьте работу заново.
+	</p>
+
+	<h2 class="mt-8 px-1 text-[12px] font-semibold tracking-[.06em] text-muted uppercase">
+		Сверка с Marzban
+	</h2>
+
+	{#if reconcileAnswer?.message}
+		<p class={['mt-3 px-1 text-[14px]', tone(reconcileAnswer.ok)]}>{reconcileAnswer.message}</p>
+	{/if}
+
+	<div class="mt-3">
+		<Card>
+			<ReconcileForm
+				errors={reconcileAnswer?.errors ?? {}}
+				values={reconcileAnswer?.values ?? {}}
+			/>
+		</Card>
+	</div>
+
+	<p class="mt-4 px-1 text-[13px] text-muted">
+		Сверка приводит панель к тому, что записано у нас: дату окончания и доступ. Наша запись ведущая,
+		из Marzban ничего не читается обратно. Повторный запуск в течение часа ничего не добавит.
 	</p>
 </div>
 
