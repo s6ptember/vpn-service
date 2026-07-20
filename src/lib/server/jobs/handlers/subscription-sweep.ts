@@ -89,28 +89,19 @@ export class SubscriptionSweepHandler extends JobHandler<'subscription.sweep'> {
 			if (!isNotifyMark(left)) continue;
 
 			/**
-			 * The key is transcribed from tech.md 6 exactly: `expiry:<subscriptionId>:<daysLeft>`.
+			 * tech.md 6: `expiry:<subscriptionId>:<expiresAtMs>:<daysLeft>`.
 			 *
-			 * CONTRACT GAP
-			 * Нужно: компонент срока в ключе `subscription.notify_expiry`.
-			 * Зачем: A15. Продлившийся человек больше никогда не получит предупреждение.
-			 * Предлагаемая форма: `expiry:<subscriptionId>:<expiresAtMs>:<daysLeft>` в tech.md 6.
-			 *
-			 * A subscription keeps its id across renewals — `SubscriptionService.upsert` writes one row
-			 * per person and overwrites it — so the second term recomputes the key the first term
-			 * already spent, the unique index drops it, and nobody is warned again. Nothing purges the
-			 * jobs table, so it is permanent. Every other recurring key in tech.md 6 carries a time
-			 * component (`sweep:<window>`, `reconcile:<id>:<hour>`); this one is the exception, which
-			 * reads like an oversight rather than a decision.
-			 *
-			 * Left exactly as specified regardless: inventing a key shape is the one thing CLAUDE.md 0
-			 * forbids outright, and a key the lead has not seen would be worse than a warning nobody
-			 * gets. The issue is open; this comment goes when it lands.
+			 * `expiresAtMs` is what makes this a key per TERM rather than per subscription, and it is
+			 * load-bearing. A subscription keeps its id across renewals — `SubscriptionService.upsert`
+			 * writes one row per person and overwrites it — and nothing purges the jobs table, so a
+			 * key built from the id alone would be spent by the first term and silently drop every
+			 * warning the person was owed for the rest of their life. The renewal moves `expiresAt`,
+			 * so the new term gets its own pair of keys.
 			 */
 			this.jobs.enqueue(
 				'subscription.notify_expiry',
 				{ subscriptionId: row.id, daysLeft: left },
-				`expiry:${row.id}:${left}`
+				`expiry:${row.id}:${row.expiresAt.getTime()}:${left}`
 			);
 		}
 	}

@@ -25,6 +25,21 @@ const PLAN_PRICE_MINOR = 499;
 const SETTLE = { timeout: 20_000 };
 
 /**
+ * One salt per run, for the same reason stage 4 carries one: the preview server keeps a single
+ * SQLite file across runs, and `foldTerms` folds EVERY paid order of a person into their end date.
+ * A fixed id therefore reads "Осталось 30 дней" on a fresh database, 60 on the second run and 90 on
+ * the third — the suite would pass once and then fail forever on a rule working exactly as designed.
+ *
+ * BUYER is deliberately shared by the two tests in the serial block below: the second one asserts
+ * that a second purchase EXTENDS the first (tech.md 17.3), which needs the same person. The salt
+ * isolates runs from each other, not tests from each other.
+ */
+const RUN = Date.now() % 100_000;
+const BUYER = 701_300_000 + RUN;
+const UNDERPAYER = 701_400_000 + RUN;
+const VISITOR = 701_500_000 + RUN;
+
+/**
  * There is no Telegram bridge in a plain browser, so `openExternal` falls back to window.open.
  * Stubbing it keeps the run from spawning tabs and hands us the publicId, which lives in the
  * checkout url and nowhere else the client can see.
@@ -81,7 +96,7 @@ async function startCheckout(page: Page, planName = PLAN_NAME): Promise<string> 
 
 test.describe.serial('buying a subscription', () => {
 	test('pays for a plan and gets a working key in the profile', async ({ page, request }) => {
-		await signIn(page, request, withId(700_000_301));
+		await signIn(page, request, withId(BUYER));
 		await captureCheckoutLinks(page);
 
 		await page.goto('/');
@@ -116,7 +131,7 @@ test.describe.serial('buying a subscription', () => {
 		// The key itself: a link to copy and a QR to scan from another device.
 		await expect(page.getByRole('img', { name: 'QR-код подписки' })).toBeVisible();
 		await expect(page.getByRole('button', { name: 'Скопировать: Ссылка подписки' })).toBeVisible();
-		await expect(page.getByText(`/sub/tg_700000301`)).toBeVisible();
+		await expect(page.getByText(`/sub/tg_${BUYER}`)).toBeVisible();
 
 		// And the invitation to buy is gone, because there is nothing left to buy.
 		await expect(page.getByText('Подписки нет')).toHaveCount(0);
@@ -124,7 +139,7 @@ test.describe.serial('buying a subscription', () => {
 
 	test('adds the days of a second purchase to the first', async ({ page, request }) => {
 		// tech.md 17.3: buying again extends, it never resets. Same person as above.
-		await signIn(page, request, withId(700_000_301));
+		await signIn(page, request, withId(BUYER));
 		await captureCheckoutLinks(page);
 
 		await page.goto('/');
@@ -182,7 +197,7 @@ test.describe('the webhook is the only door', () => {
 		page,
 		request
 	}) => {
-		await signIn(page, request, withId(700_000_302));
+		await signIn(page, request, withId(UNDERPAYER));
 		await captureCheckoutLinks(page);
 
 		await page.goto('/');
@@ -204,7 +219,7 @@ test.describe('the webhook is the only door', () => {
 
 test.describe('a visitor who has not paid', () => {
 	test('sees the plans and no key', async ({ page, request }) => {
-		await signIn(page, request, withId(700_000_303));
+		await signIn(page, request, withId(VISITOR));
 
 		await page.goto('/profile');
 		await hydrated(page);
