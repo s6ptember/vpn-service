@@ -37,8 +37,10 @@
 <Card>
 	<div class="flex items-start justify-between gap-3">
 		<div class="min-w-0">
-			<p class="truncate text-[17px] leading-tight font-semibold">{subscription.planName}</p>
-			<p class="mt-1 text-[14px] text-muted">
+			<p class="truncate text-h2 leading-tight font-bold tracking-[-.02em]">
+				{subscription.planName}
+			</p>
+			<p class="mt-1.5 text-sm text-muted">
 				{subscription.status === 'active' ? 'Действует до' : 'Действовала до'}
 				{formatDate(subscription.expiresAt)}
 			</p>
@@ -56,13 +58,13 @@
 				<CopyField value={subscription.subscriptionUrl} label="Ссылка подписки" />
 			</div>
 
-			<p class="mt-3 text-[13px] text-muted">
+			<p class="mt-3.5 text-xs text-muted">
 				Импортируйте ссылку в V2Box на iOS или Hiddify на Android — или отсканируйте QR-код с
 				другого устройства.
 			</p>
 		</div>
 	{:else}
-		<p class="mt-3 text-[14px] text-muted">
+		<p class="mt-3.5 text-sm text-muted">
 			Выберите тариф на главной — ключ останется прежним, дни добавятся к подписке.
 		</p>
 	{/if}

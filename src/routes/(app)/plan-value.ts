@@ -37,6 +37,11 @@ export function formatTraffic(bytes: number): string {
 	return bytes === 0 ? 'Безлимитный трафик' : `${gibFromBytes(bytes)} ГБ трафика`;
 }
 
+/** The same fact sized for a pill on a card, where there is room for a value and not a sentence. */
+export function formatTrafficShort(bytes: number): string {
+	return bytes === 0 ? 'Безлимит' : `${gibFromBytes(bytes)} ГБ`;
+}
+
 /** Price per day in minor units, so Money stays the only thing that formats a price (CLAUDE.md 4). */
 export function perDayMinor(plan: PlanDTO): number {
 	return Math.round(plan.priceMinor / plan.durationDays);

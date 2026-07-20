@@ -3,7 +3,11 @@
 	import { LoaderCircle } from 'lucide-svelte';
 
 	interface Props {
-		variant?: 'primary' | 'ghost' | 'danger';
+		/**
+		 * `contrast` is the variant for a Card with `tone="accent"`: a primary button there would be
+		 * accent on accent and disappear. Every other variant assumes a dark surface underneath.
+		 */
+		variant?: 'primary' | 'ghost' | 'danger' | 'contrast';
 		size?: 'sm' | 'md';
 		loading?: boolean;
 		disabled?: boolean;
@@ -35,7 +39,8 @@
 	const VARIANTS: Record<NonNullable<Props['variant']>, string> = {
 		primary: 'bg-accent-600 font-semibold text-on-accent',
 		ghost: 'bg-elevated font-medium text-ink',
-		danger: 'bg-danger-600 font-semibold text-on-accent'
+		danger: 'bg-danger-600 font-semibold text-on-accent',
+		contrast: 'bg-page font-semibold text-ink'
 	};
 
 	const SIZES: Record<NonNullable<Props['size']>, string> = {

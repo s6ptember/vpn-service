@@ -87,19 +87,19 @@
 				{/if}
 
 				<div class="min-w-0 flex-1">
-					<p class="text-[16px] font-semibold">{copy.title}</p>
-					<p class="mt-1 text-[14px] text-muted">{copy.text}</p>
+					<p class="text-h3 font-semibold">{copy.title}</p>
+					<p class="mt-1.5 text-sm text-muted">{copy.text}</p>
 
 					{#if phase === 'ready'}
 						<a
 							href={resolve('/profile')}
 							data-sveltekit-preload-data="tap"
-							class="mt-3.5 inline-flex h-11 items-center rounded-control bg-accent-600 px-4 text-[15px] font-semibold text-white press"
+							class="mt-4 inline-flex h-11 items-center rounded-full bg-accent-600 px-5 text-sm font-semibold text-on-accent press"
 						>
 							Открыть профиль
 						</a>
 					{:else if phase !== 'waiting' && phase !== 'granting'}
-						<div class="mt-3.5">
+						<div class="mt-4">
 							<Button size="sm" variant="ghost" onclick={ondismiss}>Понятно</Button>
 						</div>
 					{/if}

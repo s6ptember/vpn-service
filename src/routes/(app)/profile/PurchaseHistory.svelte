@@ -35,12 +35,12 @@
 <Card padded={false}>
 	<ul>
 		{#each orders as order, i (order.id)}
-			<li class={['flex items-center gap-3 px-4 py-3', i > 0 && 'border-t border-line']}>
+			<li class={['flex items-center gap-3 px-5 py-4', i > 0 && 'border-t border-line']}>
 				<div class="min-w-0 flex-1">
 					<!-- The snapshot, not the live plan (tech.md 5): a receipt describes what was actually
 					     bought, not what the plan has been renamed or repriced to since. -->
-					<p class="text-[15px] leading-tight font-medium">{order.plan.name}</p>
-					<p class="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-[13px] text-muted">
+					<p class="text-sm leading-tight font-semibold">{order.plan.name}</p>
+					<p class="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted">
 						{formatDate(dateOf(order))}
 						{#if labelOf(order.status)}
 							{@const label = labelOf(order.status)!}
@@ -48,7 +48,7 @@
 						{/if}
 					</p>
 				</div>
-				<p class="shrink-0 text-[15px] font-medium tabular-nums">
+				<p class="shrink-0 text-body font-bold tabular-nums">
 					<Money minor={order.finalPriceMinor} currency={order.currency} />
 				</p>
 			</li>

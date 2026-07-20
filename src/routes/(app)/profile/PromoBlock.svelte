@@ -5,6 +5,7 @@
 	import Button from '$lib/ui/Button.svelte';
 	import Input from '$lib/ui/Input.svelte';
 	import Money from '$lib/ui/Money.svelte';
+	import SectionHeading from '$lib/ui/SectionHeading.svelte';
 	import type { Currency, PromoCodeDTO } from '$lib/types';
 
 	interface Props {
@@ -39,9 +40,7 @@
 	let answer = $derived(result && normalise(code) === normalise(result.code) ? result : null);
 </script>
 
-<h2 class="mt-7 mb-2 px-1 text-[12px] font-semibold tracking-[.06em] text-muted uppercase">
-	Промокод
-</h2>
+<SectionHeading title="Промокод" />
 
 <form
 	method="POST"
@@ -71,7 +70,7 @@
 </form>
 
 {#if answer?.ok && answer.promo}
-	<p class="mt-2 px-1 text-[13px] font-medium text-accent-700" role="status" aria-live="polite">
+	<p class="mt-2.5 px-1 text-xs font-medium text-accent-700" role="status" aria-live="polite">
 		<!--
 			What the CODE is worth, not what this purchase will cost: the final price depends on the
 			plan, and the Stripe floor can eat part of a discount on the cheapest one (tech.md 10). The

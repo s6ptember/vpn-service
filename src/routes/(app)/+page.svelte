@@ -150,7 +150,14 @@
 </svelte:head>
 
 <div class="px-4 pt-[max(16px,env(safe-area-inset-top))] pb-28">
-	<WelcomeHeader name={session.user?.firstName ?? null} />
+	<WelcomeHeader
+		name={session.user?.firstName ?? null}
+		photoUrl={session.user?.photoUrl ?? null}
+	/>
+
+	<!-- Directly under the greeting, the way the reference lays a screen out: what the service is,
+	     before what this person currently has. -->
+	<FeaturePills />
 
 	<CheckoutStatus {phase} paid={watcher.paid} ondismiss={() => watcher.dismiss()} />
 
@@ -162,15 +169,13 @@
 		onsetup={openSetup}
 		onpromo={openPromo}
 	/>
-
-	<FeaturePills />
 </div>
 
 <Sheet bind:open={buySheetOpen} title="Тарифы">
 	<!-- Lives inside the sheet, not the page behind it: a refusal happens while buying, and the
 	     sheet's own backdrop would otherwise sit on top of a banner rendered underneath it. -->
 	{#if form?.message && !errorDismissed}
-		<p class="mb-3 rounded-card bg-surface p-4 text-[14px] text-danger-700" role="alert">
+		<p class="mb-3 rounded-card bg-danger-100 p-4 text-sm text-danger-700" role="alert">
 			{form.message}
 		</p>
 	{/if}
@@ -182,8 +187,8 @@
 		/>
 	{:else}
 		{#if promoCode}
-			<p class="mb-3 px-1 text-[13px] text-muted">
-				Промокод <span class="font-semibold text-ink">{promoCode}</span> применится к покупке.
+			<p class="mb-3 px-1 text-xs text-muted">
+				Промокод <span class="font-semibold text-accent-600">{promoCode}</span> применится к покупке.
 			</p>
 		{/if}
 
@@ -201,7 +206,7 @@
 			{/each}
 		</div>
 
-		<p class="mt-4 pb-1 text-center text-[13px] text-muted">Ключ придёт сразу после оплаты</p>
+		<p class="mt-4 pb-1 text-center text-xs text-muted">Ключ придёт сразу после оплаты</p>
 	{/if}
 </Sheet>
 
@@ -213,7 +218,7 @@
 		maxlength={32}
 		uppercase
 	/>
-	<p class="mt-2 px-1 text-[13px] text-muted">
+	<p class="mt-2 px-1 text-xs text-muted">
 		<!-- Honest about where the number appears: the discount is applied when the order is priced,
 		     and the amount charged is on the payment page. -->
 		Скидка применится к выбранному тарифу на странице оплаты.

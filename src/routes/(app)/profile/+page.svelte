@@ -1,15 +1,16 @@
 <script lang="ts">
 	import { getContext, untrack } from 'svelte';
-	import { ChevronRight, LoaderCircle, SlidersHorizontal } from 'lucide-svelte';
+	import { LoaderCircle, SlidersHorizontal } from 'lucide-svelte';
 	import { goto } from '$app/navigation';
 	import { resolve } from '$app/paths';
 	import { checkoutWatcher } from '$lib/client/checkout.svelte';
 	import { haptic } from '$lib/client/telegram-haptics';
 	import { TELEGRAM_SESSION_KEY, type TelegramSession } from '$lib/client/telegram.svelte';
+	import Avatar from '$lib/ui/Avatar.svelte';
 	import Button from '$lib/ui/Button.svelte';
 	import Card from '$lib/ui/Card.svelte';
 	import EmptyState from '$lib/ui/EmptyState.svelte';
-	import Avatar from './Avatar.svelte';
+	import SectionHeading from '$lib/ui/SectionHeading.svelte';
 	import PromoBlock from './PromoBlock.svelte';
 	import PurchaseHistory from './PurchaseHistory.svelte';
 	import SubscriptionCard from './SubscriptionCard.svelte';
@@ -74,29 +75,46 @@
 </svelte:head>
 
 <div class="px-4 pt-[max(16px,env(safe-area-inset-top))] pb-28">
-	<h1 class="text-[28px] font-bold tracking-[-.02em]">Профиль</h1>
+	<!--
+		The reference centres this screen's title and hangs its one utility off the corner. The admin
+		entrance is that utility: an icon, hidden from everyone else, and that is all the hiding is —
+		the guard in hooks.server.ts and the isAdmin check inside every admin action are what actually
+		refuse the request (tech.md 9).
+	-->
+	<div class="relative flex items-center justify-center">
+		<h1 class="text-h1 font-bold tracking-[-.02em]">Профиль</h1>
+
+		{#if session.isAdmin}
+			<a
+				href={resolve('/profile/admin')}
+				data-sveltekit-preload-data="tap"
+				class="absolute right-0 grid size-11 place-items-center rounded-full bg-surface text-accent-600 press"
+				aria-label="Админка"
+			>
+				<SlidersHorizontal class="size-5" aria-hidden="true" />
+			</a>
+		{/if}
+	</div>
 
 	<!--
 		Shown whether or not anybody is signed in: a browser visitor gets the empty avatar and
 		Инкогнито rather than the whole profile disappearing behind a single sign-in banner.
 	-->
-	<div class="mt-5 flex items-center gap-3">
-		<Avatar photoUrl={user?.photoUrl ?? null} firstName={user?.firstName ?? null} />
-		<div class="min-w-0">
-			<p class="truncate text-[17px] leading-tight font-semibold">{fullName}</p>
-			{#if handle}
-				<p class="truncate text-[14px] text-muted">{handle}</p>
-			{/if}
-		</div>
+	<div class="mt-8 flex flex-col items-center text-center">
+		<Avatar photoUrl={user?.photoUrl ?? null} firstName={user?.firstName ?? null} size="lg" />
+		<p class="mt-5 max-w-full truncate text-h1 font-bold tracking-[-.02em] text-accent-600">
+			{fullName}
+		</p>
+		{#if handle}
+			<p class="mt-1 max-w-full truncate text-sm text-muted">{handle}</p>
+		{/if}
 	</div>
 
 	{#if user}
 		<PromoBlock result={form} currency={data.currency} />
 	{/if}
 
-	<h2 class="mt-7 mb-2 px-1 text-[12px] font-semibold tracking-[.06em] text-muted uppercase">
-		Подписка
-	</h2>
+	<SectionHeading title="Подписка" />
 
 	{#if data.subscription}
 		<SubscriptionCard subscription={data.subscription} onrenew={choosePlan} />
@@ -114,8 +132,8 @@
 					</span>
 				{/if}
 				<div class="min-w-0" role="status" aria-live="polite">
-					<p class="text-[16px] font-semibold">Оплата прошла</p>
-					<p class="mt-1 text-[14px] text-muted">
+					<p class="text-h3 font-semibold">Оплата прошла</p>
+					<p class="mt-1.5 text-sm text-muted">
 						{#if waitingPhase === 'timeout'}
 							<!-- The provision job retries with a backoff that can outlast our minute. A
 							     spinner still turning after that would promise something we cannot time. -->
@@ -146,34 +164,9 @@
 			heading explaining that nothing has happened yet, which the empty state above already
 			says better.
 		-->
-		<h2 class="mt-7 mb-2 px-1 text-[12px] font-semibold tracking-[.06em] text-muted uppercase">
-			История покупок
-		</h2>
+		<SectionHeading title="История покупок" />
 
 		<PurchaseHistory orders={data.history} />
-	{/if}
-
-	{#if session.isAdmin}
-		<!--
-			The entrance is hidden from everyone else, and that is all it is: the guard in
-			hooks.server.ts and the isAdmin check inside every admin action are what actually
-			refuse the request (tech.md 9).
-		-->
-		<h2 class="mt-7 mb-2 px-1 text-[12px] font-semibold tracking-[.06em] text-muted uppercase">
-			Управление
-		</h2>
-
-		<Card padded={false}>
-			<a
-				href={resolve('/profile/admin')}
-				data-sveltekit-preload-data="tap"
-				class="flex items-center gap-3 p-4 press"
-			>
-				<SlidersHorizontal class="size-5 shrink-0 text-accent-600" aria-hidden="true" />
-				<span class="min-w-0 flex-1 text-[15px] font-medium">Админка</span>
-				<ChevronRight class="size-4 shrink-0 text-muted" aria-hidden="true" />
-			</a>
-		</Card>
 	{/if}
 </div>
 
