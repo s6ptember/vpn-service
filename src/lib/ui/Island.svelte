@@ -41,7 +41,8 @@
 				data-sveltekit-preload-data="tap"
 				class={[
 					'relative z-10 grid h-12 w-16 place-items-center rounded-full',
-					active ? 'text-white' : 'text-muted',
+					// The pill is accent-filled, so the active icon inverts rather than going white.
+					active ? 'text-on-accent' : 'text-muted',
 					!prefersReducedMotion.current && 'transition-colors duration-[420ms]'
 				]}
 				aria-label={section.label}

@@ -28,21 +28,25 @@
 		children
 	}: Props = $props();
 
+	/**
+	 * The accent is a light colour on a dark page, so a primary button inverts: near-black label on
+	 * lavender, the way the reference deck fills its cards. White here would be unreadable.
+	 */
 	const VARIANTS: Record<NonNullable<Props['variant']>, string> = {
-		primary: 'bg-accent-600 font-semibold text-white',
-		ghost: 'bg-ink/[.07] font-medium text-ink',
-		danger: 'bg-danger-600 font-semibold text-white'
+		primary: 'bg-accent-600 font-semibold text-on-accent',
+		ghost: 'bg-elevated font-medium text-ink',
+		danger: 'bg-danger-600 font-semibold text-on-accent'
 	};
 
 	const SIZES: Record<NonNullable<Props['size']>, string> = {
-		sm: 'h-11 rounded-control',
-		md: 'h-12 rounded-field'
+		sm: 'h-11 text-sm',
+		md: 'h-13 text-body'
 	};
 
 	// Loading dims nothing: it reads as busy, not as unavailable, and the spinner must stay crisp.
 	let classes = $derived(
 		[
-			'press relative inline-flex select-none items-center justify-center px-4 text-[15px]',
+			'press relative inline-flex select-none items-center justify-center rounded-full px-5',
 			VARIANTS[variant],
 			SIZES[size],
 			disabled ? 'opacity-40' : '',

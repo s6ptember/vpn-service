@@ -43,7 +43,7 @@
 			pointer convenience, not the only way out.
 		-->
 		<div
-			class="absolute inset-0 bg-ink/40"
+			class="absolute inset-0 bg-black/65"
 			onclick={close}
 			transition:fade={{ duration: motion.duration }}
 			aria-hidden="true"
@@ -59,7 +59,7 @@
 			class="sheet island relative max-h-[85dvh] w-full max-w-[430px] overflow-y-auto px-4 pt-4 pb-[max(16px,env(safe-area-inset-bottom))]"
 		>
 			{#if title}
-				<h2 id={titleId} class="px-1 text-[17px] leading-tight font-semibold">{title}</h2>
+				<h2 id={titleId} class="px-1 text-h2 leading-tight font-bold tracking-[-.02em]">{title}</h2>
 			{/if}
 
 			<div class={title && 'mt-4'}>
@@ -72,6 +72,6 @@
 <style>
 	/* `island` carries the glass tokens; its pill radius is the only part a sheet cannot use. */
 	.sheet {
-		border-radius: 24px 24px 0 0;
+		border-radius: 28px 28px 0 0;
 	}
 </style>

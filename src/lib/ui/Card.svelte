@@ -4,6 +4,12 @@
 	interface Props {
 		padded?: boolean;
 		interactive?: boolean;
+		/**
+		 * `accent` fills the card with the accent and flips its text to near-black — the reference
+		 * deck's treatment for the one card a screen is steering somebody towards. It is a spotlight,
+		 * so at most one card per screen may wear it; a deck of accent cards has no hierarchy left.
+		 */
+		tone?: 'surface' | 'accent';
 		onclick?: (event: MouseEvent) => void;
 		class?: string;
 		children: Snippet;
@@ -12,6 +18,7 @@
 	let {
 		padded = true,
 		interactive = false,
+		tone = 'surface',
 		onclick,
 		class: className = '',
 		children
@@ -25,10 +32,16 @@
 	 */
 	let clickable = $derived(interactive || Boolean(onclick));
 
+	const TONES: Record<NonNullable<Props['tone']>, string> = {
+		surface: 'bg-surface text-ink',
+		accent: 'bg-accent-600 text-on-accent'
+	};
+
 	let classes = $derived(
 		[
-			'rounded-card bg-surface',
-			padded ? 'p-4' : '',
+			'rounded-card',
+			TONES[tone],
+			padded ? 'p-5' : '',
 			clickable ? 'press cursor-pointer' : '',
 			className
 		]
