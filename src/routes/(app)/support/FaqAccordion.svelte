@@ -29,8 +29,8 @@
 				<!-- On the details, not on the summary: `toggle` fires for a tap and for the keyboard
 				     alike, and it cannot fire for a state change that did not happen. -->
 				<details name={GROUP} class="group" ontoggle={() => haptic()}>
-					<summary class="flex cursor-pointer list-none items-start gap-3 p-4 press select-none">
-						<h3 class="min-w-0 flex-1 text-[15px] leading-snug font-medium">{item.question}</h3>
+					<summary class="flex cursor-pointer list-none items-start gap-3 p-5 press select-none">
+						<h3 class="min-w-0 flex-1 text-body leading-snug font-semibold">{item.question}</h3>
 						<!-- The span carries the rotation: a class handed to a component is not this
 						     component's element, so scoped styling would never reach the svg. -->
 						<span
@@ -40,7 +40,7 @@
 						</span>
 					</summary>
 
-					<p class="px-4 pb-4 text-[14px] leading-relaxed text-muted select-text">{item.answer}</p>
+					<p class="px-5 pb-5 text-sm leading-relaxed text-muted select-text">{item.answer}</p>
 				</details>
 			</li>
 		{/each}

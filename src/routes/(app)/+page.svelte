@@ -150,10 +150,7 @@
 </svelte:head>
 
 <div class="px-4 pt-[max(16px,env(safe-area-inset-top))] pb-28">
-	<WelcomeHeader
-		name={session.user?.firstName ?? null}
-		photoUrl={session.user?.photoUrl ?? null}
-	/>
+	<WelcomeHeader name={session.user?.firstName ?? null} photoUrl={session.user?.photoUrl ?? null} />
 
 	<!-- Directly under the greeting, the way the reference lays a screen out: what the service is,
 	     before what this person currently has. -->

@@ -16,7 +16,7 @@
 <!-- Outlined pills on the page itself, not filled chips on a card: the reference puts exactly this
      row under the greeting, and an outline keeps it quiet enough to stay a caption for the screen
      rather than competing with the card below it. -->
-<ul class="no-scrollbar mt-5 flex list-none gap-2 overflow-x-auto" aria-label="Особенности сервиса">
+<ul class="mt-5 no-scrollbar flex list-none gap-2 overflow-x-auto" aria-label="Особенности сервиса">
 	{#each FEATURES as feature (feature.label)}
 		{@const Icon = feature.icon}
 		<li

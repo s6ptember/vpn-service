@@ -2,24 +2,26 @@
 	import { ArrowLeft } from 'lucide-svelte';
 	import { goto } from '$app/navigation';
 	import { resolve } from '$app/paths';
+	import Card from '$lib/ui/Card.svelte';
 	import CopyField from '$lib/ui/CopyField.svelte';
 	import QrCode from '$lib/ui/QrCode.svelte';
 	import type { PageProps } from './$types';
 
 	let { data }: PageProps = $props();
 
+	/** The number is rendered as its own token beside the step, so it is not repeated in the title. */
 	const STEPS = [
 		{
-			title: '1. Установите Happ',
+			title: 'Установите Happ',
 			description: 'Найдите приложение Happ в App Store или Google Play и установите его.'
 		},
 		{
-			title: '2. Отсканируйте QR-код',
+			title: 'Отсканируйте QR-код',
 			description:
 				'Откройте Happ и отсканируйте код ниже — или вставьте ссылку на подписку вручную.'
 		},
 		{
-			title: '3. Подключитесь',
+			title: 'Подключитесь',
 			description: 'Нажмите «Подключиться» в приложении — доступ уже открыт.'
 		}
 	];
@@ -34,29 +36,45 @@
 <div class="px-4 pt-[max(16px,env(safe-area-inset-top))] pb-10">
 	<button
 		type="button"
-		class="-ml-1 flex items-center gap-1 text-[15px] text-muted press"
+		class="grid size-11 place-items-center rounded-full bg-surface press"
 		onclick={() => goto(resolve('/'))}
+		aria-label="Назад на главную"
 	>
-		<ArrowLeft class="size-4" aria-hidden="true" />
-		Назад
+		<ArrowLeft class="size-5" aria-hidden="true" />
 	</button>
 
-	<h1 class="mt-3 text-[28px] font-bold tracking-[-.02em]">Установка и настройка</h1>
-	<p class="mt-2 text-[15px] text-muted">Три шага — и VPN готов к работе.</p>
+	<h1 class="mt-5 text-h1 font-bold tracking-[-.02em]">Установка и настройка</h1>
+	<p class="mt-2 text-sm text-muted">Три шага — и VPN готов к работе.</p>
 
-	<ol class="mt-6 list-none space-y-5">
-		{#each STEPS as step (step.title)}
+	<ol class="mt-7 list-none space-y-4">
+		{#each STEPS as step, index (step.title)}
 			<li>
-				<p class="text-[15px] font-semibold">{step.title}</p>
-				<p class="mt-1 text-[14px] text-muted">{step.description}</p>
+				<Card>
+					<div class="flex items-start gap-4">
+						<!-- The counter is decoration over an ordered list that already numbers itself;
+						     announcing it again would read every step twice. -->
+						<span
+							class="grid size-9 shrink-0 place-items-center rounded-full bg-accent-600 text-sm font-bold text-on-accent"
+							aria-hidden="true"
+						>
+							{index + 1}
+						</span>
+						<div class="min-w-0">
+							<p class="text-body font-semibold">{step.title}</p>
+							<p class="mt-1.5 text-sm text-muted">{step.description}</p>
+						</div>
+					</div>
+				</Card>
 			</li>
 		{/each}
 	</ol>
 
-	<div class="mt-6 rounded-card bg-surface p-4">
-		<QrCode value={data.subscription.subscriptionUrl} size={200} />
-		<div class="mt-4">
-			<CopyField value={data.subscription.subscriptionUrl} label="Ссылка подписки" />
-		</div>
+	<div class="mt-4">
+		<Card>
+			<QrCode value={data.subscription.subscriptionUrl} size={220} />
+			<div class="mt-5">
+				<CopyField value={data.subscription.subscriptionUrl} label="Ссылка подписки" />
+			</div>
+		</Card>
 	</div>
 </div>

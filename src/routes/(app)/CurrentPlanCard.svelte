@@ -94,7 +94,10 @@
 						out of the a11y tree rather than repeating it as a second announcement.
 					-->
 					<div
-						class={['mt-2.5 h-1.5 overflow-hidden rounded-full', highlighted ? 'bg-on-accent/20' : 'bg-elevated']}
+						class={[
+							'mt-2.5 h-1.5 overflow-hidden rounded-full',
+							highlighted ? 'bg-on-accent/20' : 'bg-elevated'
+						]}
 						aria-hidden="true"
 					>
 						<div

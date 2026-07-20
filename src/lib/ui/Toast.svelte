@@ -26,10 +26,7 @@
 >
 	{#each toasts.items as toast (toast.id)}
 		<div
-			class={[
-				'rounded-full px-4 py-2.5 text-xs font-semibold',
-				TONE_SURFACE[toast.tone]
-			]}
+			class={['rounded-full px-4 py-2.5 text-xs font-semibold', TONE_SURFACE[toast.tone]]}
 			in:fly={{ y: prefersReducedMotion.current ? 0 : 8, duration }}
 			out:fade={{ duration }}
 		>

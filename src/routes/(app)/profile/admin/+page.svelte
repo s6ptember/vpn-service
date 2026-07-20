@@ -7,6 +7,7 @@
 	import EmptyState from '$lib/ui/EmptyState.svelte';
 	import Modal from '$lib/ui/Modal.svelte';
 	import Money from '$lib/ui/Money.svelte';
+	import SectionHeading from '$lib/ui/SectionHeading.svelte';
 	import type { TicketStatus } from '$lib/types';
 	import { formatDate, formatDateUtc } from '../../dates';
 	import { formatDays, formatTraffic } from '../../plan-value';
@@ -113,26 +114,27 @@
 </svelte:head>
 
 <div class="px-4 pt-[max(16px,env(safe-area-inset-top))] pb-28">
-	<h1 class="text-[28px] font-bold tracking-[-.02em]">Админка</h1>
+	<h1 class="text-h1 font-bold tracking-[-.02em]">Админка</h1>
 
 	{#if banner}
-		<p class="mt-4 rounded-card bg-surface p-4 text-[14px]" role="status">{banner}</p>
+		<p class="mt-4 rounded-card bg-surface p-5 text-sm" role="status">{banner}</p>
 	{/if}
 
-	<div class="mt-5 flex items-center justify-between gap-3">
-		<h2 class="px-1 text-[12px] font-semibold tracking-[.06em] text-muted uppercase">Тарифы</h2>
-		<Button
-			size="sm"
-			variant="ghost"
-			onclick={() => (creating = !creating)}
-			aria-label={creating ? 'Свернуть форму нового тарифа' : 'Создать тариф'}
-		>
-			<span class="flex items-center gap-1.5">
-				<Plus class="size-4" aria-hidden="true" />
-				Новый
-			</span>
-		</Button>
-	</div>
+	<SectionHeading title="Тарифы">
+		{#snippet action()}
+			<Button
+				size="sm"
+				variant="ghost"
+				onclick={() => (creating = !creating)}
+				aria-label={creating ? 'Свернуть форму нового тарифа' : 'Создать тариф'}
+			>
+				<span class="flex items-center gap-1.5">
+					<Plus class="size-4" aria-hidden="true" />
+					Новый
+				</span>
+			</Button>
+		{/snippet}
+	</SectionHeading>
 
 	{#if creating}
 		{@const answer = answerFor('plan', null)}
@@ -140,7 +142,7 @@
 		<div class="mt-3">
 			<Card>
 				{#if answer?.message}
-					<p class={['mb-3 text-[14px]', tone(answer.ok)]}>{answer.message}</p>
+					<p class={['mb-3 text-sm', tone(answer.ok)]}>{answer.message}</p>
 				{/if}
 
 				<PlanForm
@@ -170,27 +172,27 @@
 					<div class="flex items-start justify-between gap-3">
 						<div class="min-w-0">
 							<div class="flex flex-wrap items-center gap-2">
-								<h3 class="text-[17px] leading-none font-semibold">{plan.name}</h3>
+								<h3 class="text-h3 leading-none font-semibold">{plan.name}</h3>
 								{#if !plan.isActive}
 									<Badge tone="warn">Скрыт</Badge>
 								{/if}
 							</div>
-							<p class="mt-1.5 text-[13px] text-muted">
+							<p class="mt-1.5 text-xs text-muted">
 								{formatDays(plan.durationDays)} · {formatTraffic(plan.trafficLimitBytes)} · порядок {plan.sortOrder}
 							</p>
 						</div>
-						<p class="shrink-0 text-[17px] leading-none font-bold tabular-nums">
+						<p class="shrink-0 text-h3 leading-none font-bold tabular-nums">
 							<Money minor={plan.priceMinor} currency={plan.currency} />
 						</p>
 					</div>
 
 					{#if answer?.message}
-						<p class={['mt-3 text-[14px]', tone(answer.ok)]}>{answer.message}</p>
+						<p class={['mt-3 text-sm', tone(answer.ok)]}>{answer.message}</p>
 					{/if}
 
 					<details class="group mt-3 border-t border-line pt-3">
 						<summary
-							class="flex cursor-pointer list-none items-center justify-between text-[15px] font-medium press"
+							class="flex cursor-pointer list-none items-center justify-between text-sm font-medium press"
 						>
 							Изменить
 							<!-- The chevron follows the panel: a static one over an open panel is a lie. -->
@@ -239,26 +241,27 @@
 		</div>
 	{/if}
 
-	<p class="mt-4 px-1 text-[13px] text-muted">
+	<p class="mt-4 px-1 text-xs text-muted">
 		Тарифы не удаляются: заказы ссылаются на них, поэтому архивный тариф просто исчезает из списка и
 		с главной.
 	</p>
 
 	<!-- A11 — promo codes. Same shape as the plans above: create, edit inline, archive. -->
-	<div class="mt-8 flex items-center justify-between gap-3">
-		<h2 class="px-1 text-[12px] font-semibold tracking-[.06em] text-muted uppercase">Промокоды</h2>
-		<Button
-			size="sm"
-			variant="ghost"
-			onclick={() => (creatingPromo = !creatingPromo)}
-			aria-label={creatingPromo ? 'Свернуть форму нового промокода' : 'Создать промокод'}
-		>
-			<span class="flex items-center gap-1.5">
-				<Plus class="size-4" aria-hidden="true" />
-				Новый
-			</span>
-		</Button>
-	</div>
+	<SectionHeading title="Промокоды">
+		{#snippet action()}
+			<Button
+				size="sm"
+				variant="ghost"
+				onclick={() => (creatingPromo = !creatingPromo)}
+				aria-label={creatingPromo ? 'Свернуть форму нового промокода' : 'Создать промокод'}
+			>
+				<span class="flex items-center gap-1.5">
+					<Plus class="size-4" aria-hidden="true" />
+					Новый
+				</span>
+			</Button>
+		{/snippet}
+	</SectionHeading>
 
 	{#if creatingPromo}
 		{@const answer = answerFor('promo', null)}
@@ -266,7 +269,7 @@
 		<div class="mt-3">
 			<Card>
 				{#if answer?.message}
-					<p class={['mb-3 text-[14px]', tone(answer.ok)]}>{answer.message}</p>
+					<p class={['mb-3 text-sm', tone(answer.ok)]}>{answer.message}</p>
 				{/if}
 
 				<PromoForm
@@ -297,7 +300,7 @@
 					<div class="flex items-start justify-between gap-3">
 						<div class="min-w-0">
 							<div class="flex flex-wrap items-center gap-2">
-								<h3 class="text-[17px] leading-none font-semibold tracking-[.04em]">
+								<h3 class="text-h3 leading-none font-semibold tracking-[.04em]">
 									{promo.code}
 								</h3>
 								{#if !promo.isActive}
@@ -307,31 +310,31 @@
 									<Badge tone="neutral">Разобрали</Badge>
 								{/if}
 							</div>
-							<p class="mt-1.5 text-[13px] text-muted">
+							<p class="mt-1.5 text-xs text-muted">
 								{formatPromoWindow(promo.validFrom, promo.validUntil)}
 							</p>
 						</div>
 						<div class="shrink-0 text-right">
-							<p class="text-[17px] leading-none font-bold tabular-nums">
+							<p class="text-h3 leading-none font-bold tabular-nums">
 								{#if promo.discountType === 'percent'}
 									−{promo.discountValue}%
 								{:else}
 									−<Money minor={promo.discountValue} currency={data.currency} />
 								{/if}
 							</p>
-							<p class="mt-1.5 text-[13px] text-muted tabular-nums">
+							<p class="mt-1.5 text-xs text-muted tabular-nums">
 								{promo.usedCount} / {promo.maxUses ?? '∞'}
 							</p>
 						</div>
 					</div>
 
 					{#if answer?.message}
-						<p class={['mt-3 text-[14px]', tone(answer.ok)]}>{answer.message}</p>
+						<p class={['mt-3 text-sm', tone(answer.ok)]}>{answer.message}</p>
 					{/if}
 
 					<details class="group mt-3 border-t border-line pt-3">
 						<summary
-							class="flex cursor-pointer list-none items-center justify-between text-[15px] font-medium press"
+							class="flex cursor-pointer list-none items-center justify-between text-sm font-medium press"
 						>
 							Изменить
 							<ChevronDown
@@ -374,14 +377,12 @@
 		</div>
 	{/if}
 
-	<p class="mt-4 px-1 text-[13px] text-muted">
+	<p class="mt-4 px-1 text-xs text-muted">
 		Использование засчитывается после оплаты. Один промокод применяется один раз на человека.
 	</p>
 
 	<!-- A16 — operations: what people asked, what broke, and the one repair an admin can run. -->
-	<h2 class="mt-8 px-1 text-[12px] font-semibold tracking-[.06em] text-muted uppercase">
-		Обращения
-	</h2>
+	<SectionHeading title="Обращения" />
 
 	{#if data.tickets.length === 0}
 		<div class="mt-3">
@@ -397,10 +398,10 @@
 					<div class="flex items-start justify-between gap-3">
 						<div class="min-w-0">
 							<div class="flex flex-wrap items-center gap-2">
-								<h3 class="text-[15px] leading-none font-semibold">#{ticket.id}</h3>
+								<h3 class="text-sm leading-none font-semibold">#{ticket.id}</h3>
 								<Badge tone={TICKET_TONE[ticket.status]}>{TICKET_LABEL[ticket.status]}</Badge>
 							</div>
-							<p class="mt-1.5 text-[13px] text-muted">
+							<p class="mt-1.5 text-xs text-muted">
 								{ticket.author.name}
 								{#if ticket.author.username}
 									· @{ticket.author.username}
@@ -409,24 +410,22 @@
 								{/if}
 							</p>
 						</div>
-						<p class="shrink-0 text-[13px] text-muted tabular-nums">
+						<p class="shrink-0 text-xs text-muted tabular-nums">
 							{formatDate(ticket.createdAt)}
 						</p>
 					</div>
 
-					<p class="mt-3 text-[14px] break-words">{ticket.excerpt}</p>
+					<p class="mt-3 text-sm break-words">{ticket.excerpt}</p>
 				</Card>
 			{/each}
 		</div>
 	{/if}
 
-	<p class="mt-4 px-1 text-[13px] text-muted">
+	<p class="mt-4 px-1 text-xs text-muted">
 		Текст письма целиком приходит в личку — здесь только начало, чтобы узнать обращение.
 	</p>
 
-	<h2 class="mt-8 px-1 text-[12px] font-semibold tracking-[.06em] text-muted uppercase">
-		Упавшие джобы
-	</h2>
+	<SectionHeading title="Упавшие джобы" />
 
 	{#if data.failedJobs.length === 0}
 		<div class="mt-3">
@@ -441,33 +440,31 @@
 				<Card>
 					<div class="flex items-start justify-between gap-3">
 						<div class="min-w-0">
-							<h3 class="text-[15px] leading-none font-semibold break-all">{job.type}</h3>
-							<p class="mt-1.5 text-[13px] text-muted tabular-nums">
+							<h3 class="text-sm leading-none font-semibold break-all">{job.type}</h3>
+							<p class="mt-1.5 text-xs text-muted tabular-nums">
 								#{job.id} · попыток {job.attempts} из {job.maxAttempts}
 							</p>
 						</div>
-						<p class="shrink-0 text-[13px] text-muted tabular-nums">{formatDate(job.updatedAt)}</p>
+						<p class="shrink-0 text-xs text-muted tabular-nums">{formatDate(job.updatedAt)}</p>
 					</div>
 
 					{#if job.lastError}
-						<p class="mt-3 text-[13px] break-words text-danger-700">{job.lastError}</p>
+						<p class="mt-3 text-xs break-words text-danger-700">{job.lastError}</p>
 					{/if}
 				</Card>
 			{/each}
 		</div>
 	{/if}
 
-	<p class="mt-4 px-1 text-[13px] text-muted">
+	<p class="mt-4 px-1 text-xs text-muted">
 		Джоб попадает сюда, когда кончились попытки. Перезапуск из панели не предусмотрен — почините
 		причину и поставьте работу заново.
 	</p>
 
-	<h2 class="mt-8 px-1 text-[12px] font-semibold tracking-[.06em] text-muted uppercase">
-		Сверка с Marzban
-	</h2>
+	<SectionHeading title="Сверка с Marzban" />
 
 	{#if reconcileAnswer?.message}
-		<p class={['mt-3 px-1 text-[14px]', tone(reconcileAnswer.ok)]}>{reconcileAnswer.message}</p>
+		<p class={['mt-3 px-1 text-sm', tone(reconcileAnswer.ok)]}>{reconcileAnswer.message}</p>
 	{/if}
 
 	<div class="mt-3">
@@ -479,7 +476,7 @@
 		</Card>
 	</div>
 
-	<p class="mt-4 px-1 text-[13px] text-muted">
+	<p class="mt-4 px-1 text-xs text-muted">
 		Сверка приводит панель к тому, что записано у нас: дату окончания и доступ. Наша запись ведущая,
 		из Marzban ничего не читается обратно. Повторный запуск в течение часа ничего не добавит.
 	</p>
@@ -492,5 +489,5 @@
 	cancelLabel="Отмена"
 	onconfirm={() => archiving?.form.requestSubmit()}
 >
-	<p class="text-[14px] text-muted">{archiving?.body}</p>
+	<p class="text-sm text-muted">{archiving?.body}</p>
 </Modal>
