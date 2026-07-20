@@ -199,6 +199,46 @@ describe('SubscriptionSweepHandler', () => {
 	});
 
 	/**
+	 * Documents a KNOWN DEFECT, deliberately, rather than asserting the behaviour we want.
+	 *
+	 * tech.md 6 fixes the key at `expiry:<subscriptionId>:<daysLeft>` and a subscription keeps its id
+	 * across renewals, so the second term recomputes a key the first term already spent and the
+	 * renewed person is never warned. The CONTRACT GAP is filed in subscription-sweep.ts; the key
+	 * cannot be changed here without inventing a contract (CLAUDE.md 0).
+	 *
+	 * The test exists so the gap is visible in the suite instead of latent in the queue, and so it
+	 * FAILS the day the contract is fixed — which is the reminder to delete it.
+	 */
+	it('does not warn a renewed subscription a second time — known gap, see CONTRACT GAP', async () => {
+		const id = addSubscription(NOW + 3 * DAY_MS);
+
+		await handler.handle();
+		clock.advance(2 * DAY_MS);
+		await handler.handle();
+		expect(warnings()).toHaveLength(2);
+
+		// The person renews for another 30 days; the row keeps its id.
+		subscriptions.upsert({
+			userId: subscriptions.findById(id)!.userId,
+			planId,
+			marzbanUsername: `tg_renewed`,
+			subscriptionUrl: 'https://sub.local/sub/tg_renewed',
+			startsAtMs: NOW,
+			expiresAtMs: clock.now() + 30 * DAY_MS,
+			status: 'active'
+		});
+
+		// Run the new term down to both marks.
+		clock.advance(27 * DAY_MS);
+		await handler.handle();
+		clock.advance(2 * DAY_MS);
+		await handler.handle();
+
+		// Four warnings would be right. Two is what the contract's key shape produces.
+		expect(warnings()).toHaveLength(2);
+	});
+
+	/**
 	 * The second sweep of a subscription's life reaches its second mark, and that one is a different
 	 * key — so it is scheduled, and the first is not scheduled again.
 	 */
