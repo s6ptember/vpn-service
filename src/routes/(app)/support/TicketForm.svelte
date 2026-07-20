@@ -6,7 +6,7 @@
 	import Button from '$lib/ui/Button.svelte';
 	import Card from '$lib/ui/Card.svelte';
 	import Textarea from '$lib/ui/Textarea.svelte';
-	import { TICKET_MESSAGE_MAX, TICKET_MESSAGE_MIN } from '$lib/types';
+	import { TICKET_MESSAGE_MAX } from '$lib/types';
 
 	interface Props {
 		/** The answer to the last submission, if the page has one. */
@@ -28,9 +28,6 @@
 	 */
 	let refusal = $derived(result && !result.ok && text === result.text ? result.message : null);
 	let sent = $derived(result?.ok === true && text === '');
-
-	// The button is the only place that says the message is too short before the server does.
-	let ready = $derived(text.trim().length >= TICKET_MESSAGE_MIN);
 </script>
 
 <form
@@ -60,9 +57,12 @@
 		error={refusal ?? undefined}
 	/>
 
-	<Button type="submit" class="mt-3 w-full" loading={sending} disabled={!ready}>
-		Отправить обращение
-	</Button>
+	<!--
+		Never disabled while the message is short. A dead button explains nothing, and the schema is
+		the only thing that decides what counts as a message anyway — so the refusal comes back from
+		the server and lands under the field, where it can say what to do about it.
+	-->
+	<Button type="submit" class="mt-3 w-full" loading={sending}>Отправить обращение</Button>
 </form>
 
 {#if sent}
