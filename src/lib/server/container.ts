@@ -19,10 +19,13 @@ import { FakePayments, StripePayments, type PaymentProvider } from './clients/pa
 import { FakeTelegram, TelegramHttp, type TelegramApi } from './clients/telegram';
 import { config } from './config';
 import { db } from './db';
+import { SubscriptionNotifyExpiryHandler } from './jobs/handlers/subscription-notify-expiry';
 import { SubscriptionProvisionHandler } from './jobs/handlers/subscription-provision';
+import { SubscriptionSweepHandler } from './jobs/handlers/subscription-sweep';
 import { SupportNotifyAdminHandler } from './jobs/handlers/support-notify-admin';
 import { TelegramSendMessageHandler } from './jobs/handlers/telegram-send-message';
 import { JobQueue } from './jobs/queue';
+import { JobScheduler } from './jobs/scheduler';
 import { JobWorker } from './jobs/worker';
 import { log } from './log';
 import { PlanInputParser, PlanService } from './plans';
@@ -174,11 +177,20 @@ const worker = new JobWorker(
 		}),
 		new SupportNotifyAdminHandler(tickets, users, telegram, log, {
 			adminChatId: config.ADMIN_CHAT_ID
-		})
+		}),
+		// A15 — the sweep closes lapsed terms; the notice it schedules is a second, retryable job.
+		new SubscriptionSweepHandler(subscriptions, jobs, log),
+		new SubscriptionNotifyExpiryHandler(subscriptions, users, plans, jobs, log)
 	],
 	log,
 	{ adminChatId: config.ADMIN_CHAT_ID }
 );
+
+/**
+ * A15 — the only recurring job in tech.md 6. It shares the queue with the worker, so a restart
+ * inside a five-minute window creates no duplicate: the key is the window (jobs/scheduler.ts).
+ */
+const scheduler = new JobScheduler(jobs);
 
 /**
  * One process, one worker (tech.md 3: exactly one replica, SQLite plus an in-process worker).
@@ -186,8 +198,11 @@ const worker = new JobWorker(
  */
 export function startWorker(): void {
 	worker.start();
+	scheduler.start();
 }
 
 export function stopWorker(): void {
+	// Stop producing before stopping the consumer, so nothing is enqueued after the last drain.
+	scheduler.stop();
 	worker.stop();
 }
