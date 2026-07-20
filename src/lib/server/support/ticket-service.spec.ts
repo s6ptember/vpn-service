@@ -41,6 +41,15 @@ beforeEach(() => {
 });
 
 describe('SupportTicketService.create', () => {
+	/**
+	 * Every test below counts in units of TICKET_LIMIT, which keeps them readable and leaves the
+	 * number itself unpinned — the suite would stay green at a limit of one while the sentence the
+	 * person reads still said three. CLAUDE.md 2 fixes it at three, so it is asserted once, here.
+	 */
+	it('allows three an hour, the number CLAUDE.md 2 sets', () => {
+		expect(TICKET_LIMIT).toBe(3);
+	});
+
 	it('writes the request as a new ticket owned by the person who sent it', () => {
 		const created = write('Ключ не импортируется в Hiddify.');
 

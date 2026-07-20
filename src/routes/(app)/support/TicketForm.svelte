@@ -23,11 +23,19 @@
 	/**
 	 * A refusal stands only while the field still holds the text the server answered about. Editing
 	 * it retires the answer — one that survives the correction tells somebody their fix did not take.
-	 * The confirmation is the other way round: it is about a message that has already left, so it
-	 * stays until something new is typed.
 	 */
 	let refusal = $derived(result && !result.ok && text === result.text ? result.message : null);
-	let sent = $derived(result?.ok === true && text === '');
+
+	/**
+	 * Latched from an actual submission, never derived from the field being empty. Emptiness is not
+	 * proof of anything: somebody who selects their draft and deletes it to start over would be told
+	 * their problem had already reached the admin.
+	 *
+	 * Seeded from the server answer so a no-JS reload still shows the confirmation. It goes down on
+	 * the first keystroke of the next request and on the submit that follows — a card about the last
+	 * message has nothing to say about the one being written.
+	 */
+	let sent = $state(untrack(() => result?.ok === true));
 </script>
 
 <form
@@ -35,12 +43,19 @@
 	action="?/createTicket"
 	use:enhance={() => {
 		sending = true;
+		// The old confirmation goes down with the new attempt: it is about the previous message.
+		sent = false;
 
 		return async ({ result: outcome, update }) => {
 			// reset: false keeps what was typed — a refusal below is about exactly that string, and
 			// clearing the field on success is this component's job, not the form's.
 			await update({ reset: false });
-			if (outcome.type === 'success') text = '';
+
+			if (outcome.type === 'success') {
+				text = '';
+				sent = true;
+			}
+
 			sending = false;
 			haptic();
 		};
@@ -55,6 +70,7 @@
 		counter
 		rows={5}
 		error={refusal ?? undefined}
+		oninput={() => (sent = false)}
 	/>
 
 	<!--

@@ -22,6 +22,7 @@ test.use({ viewport: FRAME });
 const RUN = Date.now() % 100_000;
 const WRITER = 700_500_000 + RUN;
 const TALKER = 700_600_000 + RUN;
+const DRAFTER = 700_700_000 + RUN;
 
 const MESSAGE = 'VPN не подключается на iPhone, приложение V2Box. Ключ импортировал вчера.';
 
@@ -66,9 +67,36 @@ test.describe('writing to support', () => {
 		await page.getByRole('button', { name: 'Отправить обращение' }).click();
 
 		// tech.md 11: "Отправили, админ ответит в личку", and the field is empty for the next one.
-		await expect(page.getByText('Отправили')).toBeVisible();
+		await expect(page.getByText('Отправили', { exact: true })).toBeVisible();
 		await expect(page.getByText('Админ ответит вам в личку в Telegram.')).toBeVisible();
 		await expect(page.getByLabel('Ваше обращение')).toHaveValue('');
+	});
+
+	/**
+	 * The confirmation belongs to a message that actually left. Somebody who starts a second request
+	 * and then deletes the draft to begin again must not be told their problem has already reached
+	 * the admin — an empty field is not proof that anything was sent.
+	 */
+	test('drops the confirmation once a new request is started, and does not bring it back', async ({
+		page,
+		request
+	}) => {
+		await signIn(page, request, withId(DRAFTER));
+		await page.goto('/support');
+		await hydrated(page);
+
+		const field = page.getByLabel('Ваше обращение');
+		const confirmation = page.getByText('Отправили', { exact: true });
+
+		await field.fill(MESSAGE);
+		await page.getByRole('button', { name: 'Отправить обращение' }).click();
+		await expect(confirmation).toBeVisible();
+
+		await field.fill('Ещё одна проблема: не открывается сайт.');
+		await expect(confirmation).toBeHidden();
+
+		await field.fill('');
+		await expect(confirmation).toBeHidden();
 	});
 
 	/** tech.md 11 puts the floor at ten characters, and the field has to say so rather than refuse
@@ -97,7 +125,13 @@ test.describe('writing to support', () => {
 		for (let attempt = 0; attempt < 3; attempt++) {
 			await field.fill(`${MESSAGE} Попытка ${attempt}.`);
 			await send.click();
-			await expect(page.getByText('Отправили')).toBeVisible();
+			/**
+			 * `exact` matters more than it looks: the refusal below opens with «Вы уже отправили», and
+			 * a substring match would let a refused submission satisfy the assertion that it was
+			 * accepted — leaving this test green at a limit of one.
+			 */
+			await expect(page.getByText('Отправили', { exact: true })).toBeVisible();
+			await expect(page.getByText(/Вы уже отправили/)).toBeHidden();
 		}
 
 		await field.fill(`${MESSAGE} И ещё одно.`);
