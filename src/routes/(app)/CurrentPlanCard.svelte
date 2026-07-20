@@ -61,7 +61,9 @@
 <Card tone={highlighted ? 'accent' : 'surface'}>
 	<div class="flex items-start justify-between gap-3">
 		<div class="min-w-0">
-			<p class="truncate text-title font-bold tracking-[-.02em]">
+			<!-- Wraps rather than truncates: a plan name is free text and this is the largest type on
+			     the screen, so an ellipsis here eats most of the word it is naming. -->
+			<p class="text-title font-bold tracking-[-.02em] break-words">
 				{subscription?.planName ?? 'Нет активного плана'}
 			</p>
 			{#if subscription}
@@ -71,7 +73,11 @@
 				</p>
 			{/if}
 		</div>
-		<Badge {tone}>{statusLabel}</Badge>
+		<!-- The pill never wraps, so it must never be squeezed either: the title beside it is what
+		     gives, and it now has the room to. -->
+		<div class="shrink-0">
+			<Badge {tone}>{statusLabel}</Badge>
+		</div>
 	</div>
 
 	{#if subscription}

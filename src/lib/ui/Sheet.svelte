@@ -70,8 +70,20 @@
 {/if}
 
 <style>
-	/* `island` carries the glass tokens; its pill radius is the only part a sheet cannot use. */
+	/**
+	 * `island` carries the glass tokens; its pill radius is the only part a sheet cannot use.
+	 *
+	 * The fill goes solid as well. The island is a 60px bar where see-through reads as depth, but a
+	 * sheet covers most of the screen: at any transparency the headings behind it print through the
+	 * panel, and the deck ends up competing with the page it is covering. The hairline edge and the
+	 * shadow still come from `island` — those are what make it a sheet rather than a plain block.
+	 *
+	 * Page colour, not surface: a sheet is a page of its own, and the cards it holds are the same
+	 * `bg-surface` they are everywhere else. Filling it with surface would flatten the deck into one
+	 * block with gaps in it. The dimmed backdrop is what separates the sheet from the real page.
+	 */
 	.sheet {
 		border-radius: 28px 28px 0 0;
+		background: var(--color-page);
 	}
 </style>

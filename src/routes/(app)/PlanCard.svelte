@@ -70,13 +70,18 @@
 </script>
 
 <article class={['rounded-card p-5', best ? 'bg-accent-600 text-on-accent' : 'bg-surface']}>
-	<div class="flex items-start justify-between gap-3">
-		<h3 class="min-w-0 text-h2 leading-tight font-bold tracking-[-.02em]">{plan.name}</h3>
-		{#if plan.description}
-			<!-- The mock's badge slot, fed by the one column that carries seller copy. -->
+	<h3 class="text-h2 leading-tight font-bold tracking-[-.02em] break-words">{plan.name}</h3>
+
+	{#if plan.description}
+		<!--
+			The mock's badge slot, fed by the one column that carries seller copy. On its own line
+			rather than beside the name: the column is free text, and a pill sharing a row with a
+			heading either squeezes the heading or overflows the card once the copy runs long.
+		-->
+		<div class="mt-2.5">
 			<Badge tone={best ? 'contrast' : 'neutral'}>{plan.description}</Badge>
-		{/if}
-	</div>
+		</div>
+	{/if}
 
 	<!-- The price is the loudest thing on the card, the way every reference card leads with it. -->
 	<p class="mt-4 text-display font-bold tracking-[-.03em] tabular-nums">
