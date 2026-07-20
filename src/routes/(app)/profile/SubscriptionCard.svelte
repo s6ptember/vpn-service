@@ -1,6 +1,7 @@
 <script lang="ts">
 	import type { SubscriptionDTO } from '$lib/types';
 	import Badge from '$lib/ui/Badge.svelte';
+	import Button from '$lib/ui/Button.svelte';
 	import Card from '$lib/ui/Card.svelte';
 	import CopyField from '$lib/ui/CopyField.svelte';
 	import QrCode from '$lib/ui/QrCode.svelte';
@@ -9,9 +10,11 @@
 
 	interface Props {
 		subscription: SubscriptionDTO;
+		/** Omit it and the card shows no button — the deck itself sells without one. */
+		onrenew?: () => void;
 	}
 
-	let { subscription }: Props = $props();
+	let { subscription, onrenew }: Props = $props();
 
 	/**
 	 * `daysLeft` is computed on the server by the one function the expiry notifications will also
@@ -62,5 +65,11 @@
 		<p class="mt-3 text-[14px] text-muted">
 			Выберите тариф на главной — ключ останется прежним, дни добавятся к подписке.
 		</p>
+	{/if}
+
+	{#if onrenew}
+		<div class="mt-4">
+			<Button variant="ghost" class="w-full" onclick={onrenew}>Продлить</Button>
+		</div>
 	{/if}
 </Card>

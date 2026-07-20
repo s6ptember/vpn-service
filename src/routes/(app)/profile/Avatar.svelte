@@ -1,7 +1,10 @@
 <script lang="ts">
+	import { User } from 'lucide-svelte';
+
 	interface Props {
 		photoUrl: string | null;
-		firstName: string;
+		/** Null when nobody is signed in: there is no name to take an initial from. */
+		firstName: string | null;
 	}
 
 	let { photoUrl, firstName }: Props = $props();
@@ -13,7 +16,7 @@
 	let broken = $state(false);
 
 	// Split by code point: `'😀'[0]` is half a surrogate pair and renders as a replacement box.
-	let initial = $derived([...firstName.trim()][0]?.toUpperCase() ?? '?');
+	let initial = $derived(firstName ? ([...firstName.trim()][0]?.toUpperCase() ?? null) : null);
 	let showPhoto = $derived(Boolean(photoUrl) && !broken);
 </script>
 
@@ -29,7 +32,10 @@
 			referrerpolicy="no-referrer"
 			onerror={() => (broken = true)}
 		/>
-	{:else}
+	{:else if initial}
 		<span aria-hidden="true">{initial}</span>
+	{:else}
+		<!-- Nobody signed in: no name, no photo, just the empty-avatar glyph. -->
+		<User class="size-6" aria-hidden="true" />
 	{/if}
 </div>
