@@ -47,20 +47,22 @@ REALITY, миграции панели и оба админских аккаун
 
 ```bash
 scripts/init-env.sh      # .env из примера + сгенерированные секреты; остальное дописать руками
-docker compose build     # .env уезжает в сборку BuildKit-секретом
-docker compose up -d
+scripts/deploy.sh        # сборка + up + проверка одноразовых сервисов
 ```
 
-Проверка, что всё поднялось:
+`scripts/deploy.sh` вместо голого `docker compose build && up -d` — не для удобства, а потому что
+оба шага молча врут:
 
-```bash
-docker compose ps        # marzban-init, app-migrate и marzban-check — Exited (0)
-docker compose logs marzban-check
-```
+- `.dockerignore` держит `.env` вне контекста сборки, а BuildKit намеренно не кладёт содержимое
+  секрет-маунта в ключ кеша. Правка `.env` не меняет ни одного входа сборки, `build` попадает в кеш,
+  и образ остаётся со старыми секретами и старым доменом — с рапортом об успехе. Скрипт передаёт
+  хеш `.env` build-аргументом, и пересборка происходит ровно тогда, когда файл менялся.
+- `docker compose ps` без `-a` показывает только живые контейнеры, а все три one-shot к этому
+  моменту уже вышли. Упавший `marzban-check` выглядит там ровно как успешный: никак.
 
 `marzban-check` — единственное место, где сходится вся цепочка: он логинится в панель тем самым
-аккаунтом, с которым собрано приложение, и убеждается, что инбаунд с нужным тегом там есть.
-Ненулевой выход означает, что оплата пройдёт, а доступ не выдастся, — чинить до продажи.
+аккаунтом, что в `.env`, убеждается, что аккаунт не sudo, и что инбаунд с нужным тегом панель
+действительно отдаёт. Ненулевой выход означает, что оплата пройдёт, а доступ не выдастся.
 
 ### Что про это стоит знать
 
@@ -80,15 +82,62 @@ docker compose logs marzban-check
 Вернуть `443` можно только вторым IP на хосте.
 
 **Смена `MARZBAN_ADMIN_PASSWORD`** не переписывает уже созданного админа: у него остаётся старый
-хеш, и приложение получит `401`. `marzban-check` это ловит и говорит, что делать —
-`marzban-cli admin delete`, затем `docker compose up -d marzban-init`.
+хеш. Порядок важен — работающее приложение держит старый пароль, вмороженный в образ, и прямо
+сейчас выдаёт доступы нормально. Сначала пересобрать, потом чинить панель:
 
-**Дашборд панели не публикуется.** Наружу уходит только `/sub/*`. До панели — SSH-туннелем на
-`marzban:8000` внутри Docker-сети, аккаунтом из `MARZBAN_SUDO_USERNAME`.
+```bash
+scripts/deploy.sh                                                   # образ с новым паролем
+docker compose stop marzban
+docker compose run --rm marzban-init marzban-cli admin delete -u <username>
+docker compose up -d marzban-init && docker compose start marzban
+```
+
+Панель останавливается не из осторожности: `marzban-init` пишет в тот же `db.sqlite3`, который
+держит открытым живая панель. То же касается любого прогона `marzban-init` после апгрейда образа.
+
+**Дашборд панели не публикуется наружу.** Публичен только `/sub/*`. Сама панель слушает петлю
+хоста, поэтому до неё добираются туннелем, а дальше — `http://localhost:8000/dashboard/` в местном
+браузере, аккаунтом из `MARZBAN_SUDO_USERNAME`:
+
+```bash
+ssh -L 8000:127.0.0.1:8000 user@vps
+```
 
 **Тарифов на свежей базе нет** — их заводит админ через `/profile/admin`. Фикстуры (`plans`,
 промокоды, FAQ и два фальшивых пользователя) есть отдельным профилем и предназначены для стенда,
 не для прода: `docker compose --profile seed up app-seed`.
+
+### Бэкап и восстановление
+
+`tech.md` (A17) требует ночной бэкап с ротацией в 14 дней. Он не входит в `docker compose`
+намеренно: смысл бэкапа — пережить то, что он бэкапит, а джоб внутри контейнера умирает вместе
+с ним.
+
+```bash
+sudo apt install sqlite3                       # backup.sh требует его, иначе падает на первой строке
+sudo install -m 700 scripts/backup.sh /usr/local/bin/vpn-backup
+sudo crontab -e                                # строку взять из scripts/backup.cron.example
+```
+
+Складывает в `/var/backups/vpn-service`: `app-<дата>.db` и `marzban-<дата>.tar.gz`. Копию забирать
+с хоста наружу — бэкап на том же диске не переживает потерю диска.
+
+Восстановление — **сначала volume панели, потом всё остальное**: `marzban-data` держит приватный
+ключ REALITY и `xray_config.json`, и без них панель поднимется с новыми ключами, а все выданные
+клиенты умрут.
+
+```bash
+docker compose down
+B=/var/backups/vpn-service
+docker run --rm -v vpn-service_marzban-data:/dst -v "$B":/src:ro alpine \
+  sh -c 'rm -rf /dst/* && tar xzf /src/marzban-YYYY-MM-DD.tar.gz -C /dst'
+docker run --rm -v vpn-service_app-data:/dst -v "$B":/src:ro alpine \
+  cp /src/app-YYYY-MM-DD.db /dst/app.db
+scripts/deploy.sh
+```
+
+`docker compose down -v` удаляет оба volume: базу приложения с заказами и ключи REALITY. `down`
+без флага их сохраняет.
 
 ## Команды
 
