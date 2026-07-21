@@ -15,42 +15,64 @@
 
 name: vpn-service
 
+# The default json-file driver keeps every byte forever. On a one-VPS deploy that ends one way: the
+# disk fills, SQLite starts answering SQLITE_FULL, and the app stops taking money while still
+# serving reads. Caddy logs a line per request on both hosts, so this is the likeliest way to get
+# there.
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: '10m'
+    max-file: '3'
+
+# Split out of the x-app anchor below so app-seed can layer it OVER its env_file: `environment`
+# outranks env_file, and .env carries dev values for NODE_ENV and DATABASE_PATH that would otherwise
+# win and send a container to the wrong database.
+x-app-env: &app-env
+  # The image already declares production; this is belt and braces for a container that must never
+  # misreport its own environment. The compiled bundle is unaffected either way — DEV is frozen at
+  # build time (see Dockerfile).
+  NODE_ENV: production
+  # Reaches build-scripts/migrate.js and seed.js, which read process.env directly. It does NOT
+  # reach config.ts: that value was inlined at build time. The Dockerfile pins the build-time value
+  # to this same path so the app and the migrator open one file rather than two.
+  DATABASE_PATH: /data/app.db
+  # Read by adapter-node's handler, not by config.ts. Without it getClientAddress() returns the
+  # socket peer — which behind caddy is caddy's own container IP, collapsing every per-IP limit
+  # (CLAUDE.md 2) into one bucket shared by the whole application.
+  #
+  # Depth 1 means "the last entry of X-Forwarded-For", and that entry is the one caddy appends
+  # itself. Anything a client sends in that header sits to the left of it and is never read, so a
+  # spoofed value cannot buy its own budget. Raising the depth would start trusting client input.
+  ADDRESS_HEADER: x-forwarded-for
+  XFF_DEPTH: '1'
+  # Without it adapter-node derives the origin from the Host header, which is client-controlled.
+  # That origin is what SvelteKit's CSRF check compares against — and the session cookie is
+  # sameSite:'none' by necessity (tech.md 9), so that check is the only thing standing between a
+  # cross-site POST and a real session. Pin it to the one origin this app is ever served on.
+  ORIGIN: ${PUBLIC_APP_URL:?PUBLIC_APP_URL is required}
+
 # app and app-migrate are the same artefact and must never drift apart.
+#
+# NOTE the absence of `env_file: .env`. Compose would load the WHOLE file into a long-lived
+# container's environment, where it is readable through `docker inspect`, /proc/1/environ and any
+# crash dump — including the panel's sudo password and the REALITY private key, neither of which the
+# app has any use for. The app reads nothing from process.env at runtime (config.ts values are
+# inlined at build time), so everything it genuinely needs is listed explicitly above.
 x-app: &app
   build:
     context: .
     dockerfile: Dockerfile
     secrets:
       - dotenv
+    args:
+      # BuildKit deliberately keeps secret-mount contents out of the cache key, and .dockerignore
+      # keeps .env out of the build context — so editing .env changes no layer input and
+      # `docker compose build` is a no-op that silently reuses the old inlined secrets and domain.
+      # This arg is the cache key: scripts/deploy.sh sets it to a hash of .env.
+      DOTENV_HASH: ${DOTENV_HASH:-unset}
   image: vpn-service-app:local
-  env_file: .env
-  environment:
-    # env_file is layered over the image's ENV, so a .env written for local dev silently downgrades
-    # the container. `environment` outranks env_file and is the only place that can pin these two.
-    #
-    # NODE_ENV: the image already declares production, but .env carries NODE_ENV=development and
-    # would win. The compiled bundle is unaffected (DEV is frozen at build time — see Dockerfile),
-    # yet libraries branch on this at runtime and a container that misreports its own environment is
-    # a debugging trap. Pin it.
-    NODE_ENV: production
-    # Load-bearing, and NOT redundant with the Dockerfile's ENV of the same name: env_file is
-    # applied on top of image ENV, so .env's dev value (./data/app.db) would otherwise win here and
-    # send the migrate script to /app/data/app.db instead of the volume. `environment` outranks
-    # env_file, which puts it back.
-    #
-    # This reaches build-scripts/migrate.js, which reads process.env directly. It does NOT reach
-    # config.ts: that value was inlined at build time. The Dockerfile pins the build-time value to
-    # this same path so the app and the migrator open one file rather than two.
-    DATABASE_PATH: /data/app.db
-    # Read by adapter-node's handler, not by config.ts. Without it getClientAddress() returns the
-    # socket peer — which behind caddy is caddy's own container IP, collapsing every per-IP limit
-    # (CLAUDE.md 2) into one bucket shared by the whole application.
-    #
-    # Depth 1 means "the last entry of X-Forwarded-For", and that entry is the one caddy appends
-    # itself. Anything a client sends in that header sits to the left of it and is never read, so a
-    # spoofed value cannot buy its own budget. Raising the depth would start trusting client input.
-    ADDRESS_HEADER: x-forwarded-for
-    XFF_DEPTH: '1'
+  environment: *app-env
   volumes:
     - app-data:/data
 
@@ -104,9 +126,11 @@ services:
       # Let's Encrypt and walks straight into the rate limit.
       - caddy-data:/data
       - caddy-config:/config
-    depends_on:
-      - app
-      - marzban
+    logging: *logging
+    # No depends_on, deliberately. Caddy resolves `reverse_proxy` upstreams lazily, per request, and
+    # answers 502 for a dead one — so ordering buys nothing. It costs plenty: gating caddy on marzban
+    # means any marzban-init failure takes the mini app off the internet too, and takes the
+    # certificates with it.
     healthcheck:
       test: ['CMD', 'caddy', 'version']
       interval: 30s
@@ -116,6 +140,7 @@ services:
   app:
     <<: *app
     restart: unless-stopped
+    logging: *logging
     # Never published. Caddy is the only way in (tech.md 3).
     expose:
       - '3000'
@@ -148,6 +173,12 @@ services:
     <<: *app
     profiles: ['seed']
     restart: 'no'
+    # The only service that reads .env at runtime: seed.ts takes PRICE_CURRENCY and ADMIN_CHAT_ID
+    # from process.env. It is a short-lived one-shot on a staging box, so the wider environment
+    # costs nothing here.
+    env_file: .env
+    environment:
+      <<: *app-env
     command: ['node', 'build-scripts/seed.js']
     depends_on:
       app-migrate:
@@ -234,13 +265,17 @@ services:
       # mini app and the subscription link, at the cost of a non-443 client endpoint. Moving REALITY
       # to 443 needs a second host IP — `<second-ip>:443:8443` — not a config change.
       - '${REALITY_PORT:-8443}:${REALITY_PORT:-8443}'
-      # Port 8000 is deliberately NOT published: the panel and its /api stay on the docker network,
-      # reachable only via SSH tunnel (`ssh -L 8000:localhost:8000` onto the host, then
-      # `docker compose exec` or a host-side port-forward). Caddy exposes just /sub/*.
-    expose:
-      - '8000'
+      # The panel, bound to the HOST LOOPBACK only. `127.0.0.1:` is the whole security control and
+      # is not optional: drop it and docker installs a DNAT rule from 0.0.0.0:8000 that publishes
+      # the dashboard, /api and the admin token endpoint to the internet in plaintext, bypassing
+      # caddy and the /sub/*-only design entirely (tech.md 3).
+      #
+      # Bound rather than merely `expose`d so the documented SSH tunnel actually terminates
+      # somewhere: `ssh -L 8000:127.0.0.1:8000 user@vps` and the dashboard is on localhost:8000.
+      - '127.0.0.1:8000:8000'
     volumes:
       - marzban-data:/var/lib/marzban
+    logging: *logging
     healthcheck:
       # Connects to the container's OWN hostname rather than to 127.0.0.1, and that is the entire
       # point: a loopback probe passes even when uvicorn is bound to loopback only, which is the

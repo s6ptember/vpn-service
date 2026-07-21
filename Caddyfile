@@ -70,5 +70,17 @@
 		abort
 	}
 
-	log
+	# The subscription token IS the credential: anyone holding the URL gets the VLESS keys, and it
+	# is stable for the life of the subscription. A default access log would write it to disk on
+	# every fetch — and a VPN client refetches on a schedule — leaving a file full of live
+	# credentials readable by anyone who can run `docker compose logs`. Hashing keeps the log useful
+	# for status codes and traffic shape while making the token unrecoverable from it.
+	log {
+		format filter {
+			wrap console
+			fields {
+				request>uri hash
+			}
+		}
+	}
 }

@@ -57,10 +57,15 @@ MARZBAN_INBOUND_TAGS="${MARZBAN_INBOUND_TAGS:-}" python3 <<-'PY'
 	        if exc.code == 401:
 	            fail(
 	                f'the panel refused MARZBAN_ADMIN_USERNAME="{USERNAME}". The account does not exist '
-	                'with this password. If you rotated MARZBAN_ADMIN_PASSWORD, the existing admin row '
-	                'still holds the old one: delete it with '
-	                f'`docker compose exec marzban marzban-cli admin delete -u {USERNAME}` and re-run '
-	                '`docker compose up -d marzban-init`.'
+	                'with this password.\n'
+	                '  If you rotated MARZBAN_ADMIN_PASSWORD, do it in this order — the running app '
+	                'still holds the OLD password, inlined at build time, and is provisioning fine '
+	                'right now:\n'
+	                '    1. docker compose build          (with the new .env; scripts/deploy.sh does this)\n'
+	                '    2. docker compose stop marzban\n'
+	                f'    3. docker compose run --rm marzban-init marzban-cli admin delete -u {USERNAME}\n'
+	                '    4. docker compose up -d marzban-init && docker compose start marzban\n'
+	                '  Deleting the admin before step 1 breaks a system that currently works.'
 	            )
 	        fail(f'POST /api/admin/token answered {exc.code}: {exc.read().decode()[:200]}')
 	    except OSError as exc:
@@ -70,18 +75,39 @@ MARZBAN_INBOUND_TAGS="${MARZBAN_INBOUND_TAGS:-}" python3 <<-'PY'
 
 	print(f'marzban-check: the app account "{USERNAME}" authenticates against {BASE}')
 
+
+	def authorized(path):
+	    request = urllib.request.Request(
+	        f'{BASE}{path}',
+	        headers={'authorization': f'Bearer {access_token}', 'accept': 'application/json'},
+	    )
+	    with urllib.request.urlopen(request, timeout=10) as response:
+	        return json.load(response)
+
+
+	# CLAUDE.md 2 requires the app to hold a NON-SUDO account. init.sh only sets --no-sudo when it
+	# creates the row, and it treats "already exists" as success — so on any volume where this
+	# username was ever created as sudo, the requirement silently does not hold. GET /api/admin
+	# returns the caller's own record, so this is a direct check rather than an inference.
+	try:
+	    if authorized('/api/admin').get('is_sudo') is not False:
+	        fail(
+	            f'the app account "{USERNAME}" is a SUDO admin. CLAUDE.md 2 requires a non-sudo account: '
+	            'a superadmin token makes every app-side bug a panel-wide one. Recreate it — '
+	            f'`marzban-cli admin delete -u {USERNAME}`, then re-run marzban-init, which passes '
+	            '--no-sudo.'
+	        )
+	    print(f'marzban-check: "{USERNAME}" is non-sudo, as CLAUDE.md 2 requires')
+	except urllib.error.HTTPError as exc:
+	    fail(f'GET /api/admin answered {exc.code}: {exc.read().decode()[:200]}')
+
 	# Best-effort: the tag the app sends has to exist as MARZBAN sees it, not merely as the config
 	# file spells it. init.sh compares the file; this compares the running panel. Some builds keep
 	# /api/inbounds behind sudo, so a 403 here is not a failure.
 	wanted = [t.strip() for t in os.environ['MARZBAN_INBOUND_TAGS'].split(',') if t.strip()]
 	if wanted:
-	    request = urllib.request.Request(
-	        f'{BASE}/api/inbounds',
-	        headers={'authorization': f'Bearer {access_token}', 'accept': 'application/json'},
-	    )
 	    try:
-	        with urllib.request.urlopen(request, timeout=10) as response:
-	            payload = json.load(response)
+	        payload = authorized('/api/inbounds')
 	        present = {inbound.get('tag') for group in payload.values() for inbound in group}
 	        missing = [tag for tag in wanted if tag not in present]
 	        if missing:

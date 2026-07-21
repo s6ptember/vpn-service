@@ -12,6 +12,11 @@
 
 set -euo pipefail
 
+# Before the first file is created, not after: .env and every .env.tmp below hold the session
+# signing key and two panel passwords, and a `chmod` at the end would leave them world-readable for
+# the whole run — and permanently if the run aborts partway.
+umask 077
+
 cd "$(dirname "$0")/.."
 
 die() {

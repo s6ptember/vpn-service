@@ -56,7 +56,32 @@ strip_slash() { printf '%s' "${1%%/}"; }
 # surface as a ValueError traceback halfway through this script.
 [ "${#MARZBAN_ADMIN_PASSWORD}" -le 72 ] || die 'MARZBAN_ADMIN_PASSWORD must be at most 72 bytes (bcrypt limit)'
 
+# compose publishes REALITY as `${REALITY_PORT}:${REALITY_PORT}` — the same number on both sides,
+# into the container that also serves the panel on 8000. Setting REALITY_PORT to 8000 would publish
+# the dashboard, /api and the admin token endpoint straight to the internet over plain HTTP.
+case "${REALITY_PORT:-8443}" in
+80 | 443 | 3000 | 8000)
+	die "REALITY_PORT=${REALITY_PORT} collides with a port this stack already uses (8000 is the panel — publishing it would expose /api and the dashboard)"
+	;;
+esac
+
 log "domains check out: app=${APP_DOMAIN} sub=${SUB_DOMAIN}"
+
+# The panel holds db.sqlite3 open, and this script is about to run migrations and write admins to
+# it. On a first boot nothing is listening and this is silent; on a maintenance run it is the
+# operator's cue that they skipped a step.
+MARZBAN_HOST="${MARZBAN_HOST:-marzban}" python3 <<-'PY' || true
+	import os, socket, sys
+
+	try:
+	    socket.create_connection((os.environ['MARZBAN_HOST'], 8000), 2).close()
+	    print('marzban-init: WARNING: the panel is already running and holds its database open. '
+	          'Migrations and admin writes are about to run against a live SQLite file. For anything '
+	          'beyond a no-op rerun, stop it first: docker compose stop marzban && '
+	          'docker compose up -d marzban-init && docker compose start marzban', file=sys.stderr)
+	except OSError:
+	    pass
+PY
 
 # ---------------------------------------------------------------------------------------------
 # 1. Xray config
@@ -69,24 +94,80 @@ mkdir -p "$(dirname "$XRAY_JSON")"
 
 if [ -f "$XRAY_JSON" ]; then
 	log "$XRAY_JSON already exists — keeping it, keys and all"
+
+	# The file is written once; compose re-reads .env on every `up`. Without this comparison an
+	# edited REALITY_PORT republishes the host port while Xray keeps listening on the old one, and
+	# every client — old links and new — gets connection-refused with the whole stack showing green.
+	# tech.md 3 states this agreement as enforced, so enforcing it is the contract, not a nicety.
+	XRAY_JSON="$XRAY_JSON" \
+		WANT_PORT="${REALITY_PORT:-8443}" \
+		WANT_DEST="${REALITY_DEST:-gateway.icloud.com:443}" \
+		WANT_NAMES="${REALITY_SERVER_NAMES:-gateway.icloud.com}" \
+		WANT_KEY="${REALITY_PRIVATE_KEY:-}" \
+		python3 <<-'PY' || die 'the rendered config disagrees with .env'
+			import json, os, sys
+
+			with open(os.environ['XRAY_JSON']) as f:
+			    config = json.load(f)
+
+			inbound = config['inbounds'][0]
+			reality = inbound['streamSettings']['realitySettings']
+			path = os.environ['XRAY_JSON']
+
+			# Only the port is fatal: it is the one drift that takes the VPN down rather than merely
+			# being ignored, because docker publishes the .env value while Xray listens on the file's.
+			port, want_port = inbound['port'], int(os.environ['WANT_PORT'])
+			if port != want_port:
+			    print(
+			        f'marzban-init: REALITY_PORT={want_port} but the config on the volume listens on {port}. '
+			        f'Docker would publish {want_port} with nothing behind it, and every subscription link '
+			        f'carries {port}. Either set REALITY_PORT={port} back in .env, or edit inbounds[0].port '
+			        f'in {path} on the marzban-data volume and restart marzban.',
+			        file=sys.stderr,
+			    )
+			    sys.exit(1)
+
+			# The rest is ignored rather than dangerous: the file stays internally consistent, so a
+			# hard failure here would block an unrelated deploy over a setting that simply did nothing.
+			names = [n.strip() for n in os.environ['WANT_NAMES'].split(',') if n.strip()]
+			for label, stored, wanted in (
+			    ('REALITY_DEST', reality['dest'], os.environ['WANT_DEST']),
+			    ('REALITY_SERVER_NAMES', reality['serverNames'], names),
+			    ('REALITY_PRIVATE_KEY', reality['privateKey'], os.environ['WANT_KEY'] or reality['privateKey']),
+			):
+			    if stored != wanted:
+			        shown = '<set>' if label.endswith('PRIVATE_KEY') else wanted
+			        print(
+			            f'marzban-init: WARNING: {label}={shown} in .env is ignored — {path} already holds '
+			            f'{"<a different key>" if label.endswith("PRIVATE_KEY") else stored!r}. Edit the file '
+			            'on the volume to change it.',
+			            file=sys.stderr,
+			        )
+		PY
 else
 	log 'no xray config yet: generating REALITY keys and rendering the template'
 
 	# xray v24.12.31 prints exactly two lines: "Private key: <k>" / "Public key: <k>", base64
 	# RawURL (43 chars, no padding). Never pass --std-encoding: the config parser decodes
 	# privateKey with RawURLEncoding and would reject a standard-base64 key.
+	#
+	# Both keys come out of ONE invocation on the generated path, so the private key never appears
+	# in argv — container processes show up in the host's process table, and `ps aux` on the VPS
+	# would otherwise expose the one secret that compromises every issued client at once.
 	if [ -n "${REALITY_PRIVATE_KEY:-}" ]; then
 		PRIVATE_KEY="$REALITY_PRIVATE_KEY"
 		log 'using REALITY_PRIVATE_KEY from the environment'
+		# ALWAYS derived, never taken from a second variable. Marzban does not check that the pair
+		# matches: a mismatched publicKey yields a running core, valid-looking links and clients
+		# that can never connect, with no error logged anywhere.
+		PUBLIC_KEY="$(xray x25519 -i "$PRIVATE_KEY" | sed -n 's/^Public key: //p')"
 	else
-		PRIVATE_KEY="$(xray x25519 | sed -n 's/^Private key: //p')"
+		KEYPAIR="$(xray x25519)"
+		PRIVATE_KEY="$(printf '%s\n' "$KEYPAIR" | sed -n 's/^Private key: //p')"
+		PUBLIC_KEY="$(printf '%s\n' "$KEYPAIR" | sed -n 's/^Public key: //p')"
+		unset KEYPAIR
 	fi
 	[ -n "$PRIVATE_KEY" ] || die 'could not obtain a REALITY private key'
-
-	# ALWAYS derived, never taken from a second variable. Marzban does not check that the pair
-	# matches: a mismatched publicKey yields a running core, valid-looking links and clients that
-	# can never connect, with no error logged anywhere.
-	PUBLIC_KEY="$(xray x25519 -i "$PRIVATE_KEY" | sed -n 's/^Public key: //p')"
 	[ -n "$PUBLIC_KEY" ] || die 'could not derive the REALITY public key from the private key'
 
 	# Exactly 16 hex chars (8 bytes). Xray PANICS on anything longer than 16 — a Go index-out-of-
@@ -215,10 +296,17 @@ fi
 
 # An unreachable `dest` does not stop Xray: it starts, reports healthy, and fails every single
 # client handshake with "REALITY: failed to dial dest". Nothing in the panel surfaces that.
-DEST="${REALITY_DEST:-gateway.icloud.com:443}" python3 <<-'PY' || true
-	import os, socket, sys
+#
+# Read back out of the rendered file rather than out of the environment: on a rerun those two can
+# differ, and probing the one Xray will not dial proves nothing.
+XRAY_JSON="$XRAY_JSON" python3 <<-'PY' || true
+	import json, os, socket, sys
 
-	host, _, port = os.environ['DEST'].rpartition(':')
+	with open(os.environ['XRAY_JSON']) as f:
+	    config = json.load(f)
+	dest = config['inbounds'][0]['streamSettings']['realitySettings']['dest']
+
+	host, _, port = dest.rpartition(':')
 	try:
 	    socket.create_connection((host, int(port)), 5).close()
 	    print(f'marzban-init: REALITY dest {host}:{port} is reachable')

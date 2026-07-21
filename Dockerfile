@@ -50,8 +50,16 @@ RUN mkdir -p /data
 #   /app/data/app.db inside the container: the app's writable layer, not the app-data volume that
 #   app-migrate just migrated. The app would boot against an empty, table-less database and lose it
 #   on every recreate. env_file cannot fix this after the fact; only the build-time value counts.
+#
+# DOTENV_HASH is what makes an .env edit rebuild this layer at all. .dockerignore keeps .env out of
+# the context and BuildKit keeps secret-mount contents out of the cache key, so without this the
+# build below is a cache hit forever: rotate a Stripe key or change the domain and the image quietly
+# keeps the old values while reporting success. It is referenced in the command purely so the value
+# participates in the cache key. scripts/deploy.sh computes it; a bare `docker compose build` passes
+# `unset` and gets one sticky cache entry, which is why the README points at the script.
+ARG DOTENV_HASH=unset
 RUN --mount=type=secret,id=dotenv,target=/app/.env,required=true \
-	NODE_ENV=production DATABASE_PATH=/data/app.db npm run build
+	DOTENV_HASH="${DOTENV_HASH}" NODE_ENV=production DATABASE_PATH=/data/app.db npm run build
 
 # scripts/*.ts are TypeScript and import src/, while tsx is a devDependency that the prune below
 # removes. Compiling them here beats keeping tsx at runtime: that would drag a bundler, its esbuild
