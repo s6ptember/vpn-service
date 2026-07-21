@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test';
+import { expect, test, type APIRequestContext } from '@playwright/test';
 import { FRAME, exchange, sessionCookie, signIn, signedInitData, withId } from './helpers';
 
 /**
@@ -97,5 +97,102 @@ test.describe('profile', () => {
 		await expect(page.getByText('Инкогнито')).toBeVisible();
 		await expect(page.getByText('@')).toHaveCount(0);
 		await expect(page.getByText('Подписки нет')).toBeVisible();
+	});
+});
+
+/**
+ * The other public Telegram path (tech.md 9). It carries no session and authenticates itself with
+ * the header Telegram echoes from `setWebhook`, so the check IS the endpoint's security — hence a
+ * test that asserts the refusal, not only the happy path.
+ *
+ * The secret is the throwaway from .env.test, the same file `vite build` inlined into the preview
+ * server these suites run against.
+ */
+const WEBHOOK_SECRET = process.env.TELEGRAM_WEBHOOK_SECRET ?? 'test-webhook-secret';
+
+const postUpdate = (
+	request: APIRequestContext,
+	update: unknown,
+	secret: string | null = WEBHOOK_SECRET
+) =>
+	request.post('/api/telegram/webhook', {
+		headers: {
+			'content-type': 'application/json',
+			...(secret === null ? {} : { 'x-telegram-bot-api-secret-token': secret })
+		},
+		data: update as Record<string, unknown>
+	});
+
+const startUpdate = (updateId: number, chatId = 700_000_900) => ({
+	update_id: updateId,
+	message: { message_id: 1, chat: { id: chatId, type: 'private' }, text: '/start' }
+});
+
+test.describe('telegram webhook', () => {
+	test('refuses an update whose secret token does not match', async ({ request }) => {
+		const response = await postUpdate(request, startUpdate(910_001), 'not-the-secret');
+
+		expect(response.status()).toBe(401);
+		expect(await response.json()).toEqual({ code: 'unauthorized' });
+	});
+
+	test('refuses an update carrying no secret token at all', async ({ request }) => {
+		const response = await postUpdate(request, startUpdate(910_002), null);
+
+		expect(response.status()).toBe(401);
+	});
+
+	test('answers /start from a private chat', async ({ request }) => {
+		const response = await postUpdate(request, startUpdate(910_003));
+
+		expect(response.status()).toBe(200);
+		expect(await response.json()).toEqual({ outcome: 'start' });
+	});
+
+	test('answers a redelivery of the same update without a second reply', async ({ request }) => {
+		// Telegram redelivers until it gets a 2xx, and update_id is stable across those attempts —
+		// so it is the queue's idempotency key. The unique index turns the second enqueue into a
+		// no-op (queue.spec.ts), and the caller must still see a plain 200 or Telegram keeps trying.
+		const update = startUpdate(910_008);
+
+		expect((await postUpdate(request, update)).status()).toBe(200);
+
+		const redelivery = await postUpdate(request, update);
+		expect(redelivery.status()).toBe(200);
+		expect(await redelivery.json()).toEqual({ outcome: 'start' });
+	});
+
+	test('ignores updates it does not answer', async ({ request }) => {
+		// A plain message, a command meant for somebody else, and /start shouted into a group: the
+		// bot pushes notifications and answers one command, so all three are the same non-event.
+		const cases = [
+			{ update_id: 910_004, message: { chat: { id: 1, type: 'private' }, text: 'привет' } },
+			{ update_id: 910_005, message: { chat: { id: 1, type: 'private' }, text: '/stop' } },
+			{ update_id: 910_006, message: { chat: { id: 1, type: 'group' }, text: '/start' } },
+			{ update_id: 910_007 }
+		];
+
+		for (const update of cases) {
+			const response = await postUpdate(request, update);
+			expect(response.status(), JSON.stringify(update)).toBe(200);
+			expect(await response.json()).toEqual({ outcome: 'ignored' });
+		}
+	});
+
+	test('retires a body it cannot read instead of asking Telegram to redeliver it', async ({
+		request
+	}) => {
+		// Signed with our secret and still unreadable. A retry would carry identical bytes, so 200
+		// closes it out rather than letting Telegram redeliver the same failure until it gives up.
+		const response = await request.post('/api/telegram/webhook', {
+			headers: {
+				'content-type': 'application/json',
+				'x-telegram-bot-api-secret-token': WEBHOOK_SECRET
+			},
+			data: { update_id: 'not-a-number' }
+		});
+
+		expect(response.status()).toBe(200);
+		expect(await response.json()).toEqual({ outcome: 'ignored' });
 	});
 });

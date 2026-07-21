@@ -186,6 +186,24 @@ services:
     healthcheck:
       disable: true
 
+  # Points Telegram at this deployment's webhook (tech.md 9). Run once per environment, and again
+  # after the domain or TELEGRAM_WEBHOOK_SECRET changes:
+  #   docker compose --profile webhook up app-set-webhook
+  #
+  # Opt-in rather than part of the deploy because Telegram validates the TLS certificate at
+  # registration time: on a first deploy it would race Caddy's first ACME order and lose. Reads
+  # .env because the script takes its values from process.env, like the other one-shot scripts.
+  app-set-webhook:
+    <<: *app
+    profiles: ['webhook']
+    restart: 'no'
+    env_file: .env
+    environment:
+      <<: *app-env
+    command: ['node', 'build-scripts/set-webhook.js']
+    healthcheck:
+      disable: true
+
   # Everything an operator would otherwise do by hand after the panel's first boot. Renders the Xray
   # REALITY config with freshly generated keys, migrates the panel database, and creates both admin
   # accounts. Idempotent: a second run keeps the keys and leaves the admins alone.

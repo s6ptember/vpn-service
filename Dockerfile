@@ -71,8 +71,8 @@ RUN --mount=type=secret,id=dotenv,target=/app/.env,required=true \
 #
 # seed.ts rides along for the `seed` compose profile (staging fixtures). It is never run in
 # production — it inserts two fake users — but leaving it out of the image would mean a second build
-# variant just for staging.
-RUN npx --no-install esbuild scripts/migrate.ts scripts/seed.ts \
+# variant just for staging. set-webhook.ts is the `webhook` profile, run once per environment.
+RUN npx --no-install esbuild scripts/migrate.ts scripts/seed.ts scripts/set-webhook.ts \
 	--bundle --platform=node --format=esm --target=node22 \
 	--packages=external --outdir=build-scripts
 

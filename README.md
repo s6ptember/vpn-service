@@ -64,6 +64,21 @@ scripts/deploy.sh        # сборка + up + проверка одноразо
 аккаунтом, что в `.env`, убеждается, что аккаунт не sudo, и что инбаунд с нужным тегом панель
 действительно отдаёт. Ненулевой выход означает, что оплата пройдёт, а доступ не выдастся.
 
+### Вебхук Telegram
+
+Один раз на окружение, **после** того как Caddy выпустил сертификат: Telegram проверяет его прямо
+в момент регистрации, поэтому шаг не входит в `deploy.sh` — на первом деплое он проиграл бы гонку.
+
+```bash
+docker compose --profile webhook up app-set-webhook
+```
+
+Скрипт печатает `getWebhookInfo` с полем `lastError` — именно там видно просроченный сертификат,
+`401` от разъехавшегося `TELEGRAM_WEBHOOK_SECRET` или отвалившийся DNS. Повторить после смены
+домена или этого секрета.
+
+Бот отвечает на `/start` ссылкой на мини-апп; всё остальное человек делает внутри приложения.
+
 ### Что про это стоит знать
 
 **Домен живёт в одном файле.** `.env`: `APP_DOMAIN`, `SUB_DOMAIN`, `PUBLIC_APP_URL`,
@@ -141,19 +156,20 @@ scripts/deploy.sh
 
 ## Команды
 
-| Команда               | Что делает                                      |
-| --------------------- | ----------------------------------------------- |
-| `npm run dev`         | дев-сервер                                      |
-| `npm run build`       | прод-сборка                                     |
-| `npm run check`       | `svelte-check`                                  |
-| `npm run lint`        | `prettier --check` + `eslint`                   |
-| `npm run format`      | `prettier --write`                              |
-| `npm run test:unit`   | vitest                                          |
-| `npm run test:e2e`    | playwright                                      |
-| `npm run db:generate` | сгенерировать миграцию из схемы (только тимлид) |
-| `npm run db:migrate`  | применить миграции                              |
-| `npm run db:seed`     | залить фикстуры                                 |
-| `npm run db:check`    | `drizzle-kit check` — конфликты миграций        |
+| Команда                  | Что делает                                      |
+| ------------------------ | ----------------------------------------------- |
+| `npm run dev`            | дев-сервер                                      |
+| `npm run build`          | прод-сборка                                     |
+| `npm run check`          | `svelte-check`                                  |
+| `npm run lint`           | `prettier --check` + `eslint`                   |
+| `npm run format`         | `prettier --write`                              |
+| `npm run test:unit`      | vitest                                          |
+| `npm run test:e2e`       | playwright                                      |
+| `npm run db:generate`    | сгенерировать миграцию из схемы (только тимлид) |
+| `npm run db:migrate`     | применить миграции                              |
+| `npm run db:seed`        | залить фикстуры                                 |
+| `npm run tg:set-webhook` | зарегистрировать вебхук бота в Telegram         |
+| `npm run db:check`       | `drizzle-kit check` — конфликты миграций        |
 
 ## Где что лежит
 
