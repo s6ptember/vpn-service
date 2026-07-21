@@ -32,9 +32,9 @@
 	}
 </script>
 
-<!-- md: the phone frame is a desktop convenience; the mini app itself is the 430px column. -->
+<!-- md: the phone frame is a desktop convenience; the mini app itself is the 460px column. -->
 <div
-	class="relative mx-auto h-[100dvh] w-full max-w-[430px] overflow-hidden bg-page md:h-[880px] md:max-h-[calc(100dvh-48px)] md:rounded-[40px] md:shadow-[0_40px_80px_-20px_rgba(0,0,0,.4)]"
+	class="relative mx-auto h-[100dvh] w-full max-w-[460px] overflow-hidden bg-page md:h-[880px] md:max-h-[calc(100dvh-48px)] md:rounded-[40px] md:shadow-[0_40px_80px_-20px_rgba(0,0,0,.55)]"
 >
 	{#if section}
 		<Swipeable index={activeIndex} count={SECTIONS.length} onnavigate={navigate}>
@@ -57,7 +57,9 @@
 			class="absolute inset-0 z-50 grid place-items-center bg-page"
 			aria-hidden="true"
 		>
-			<div class="size-8 animate-spin rounded-full border-2 border-line border-t-accent-600"></div>
+			<div
+				class="size-8 animate-spin rounded-full border-2 border-line-strong border-t-accent"
+			></div>
 		</div>
 	{/if}
 </div>

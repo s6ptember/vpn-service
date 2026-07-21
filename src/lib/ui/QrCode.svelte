@@ -31,9 +31,15 @@
 	});
 </script>
 
-<!-- role="img" makes the generated SVG presentational, so the label below is the whole a11y story. -->
+<!--
+	role="img" makes the generated SVG presentational, so the label below is the whole a11y story.
+
+	The plate stays white on a dark page rather than inverting with the theme: an inverted QR (light
+	modules on dark) is out of spec, and enough scanners refuse to read one that the safe thing is to
+	carry the light plate into the dark design as a deliberate object.
+-->
 <div
-	class="qr mx-auto aspect-square"
+	class="qr mx-auto aspect-square rounded-field bg-white p-3"
 	style:width="{size}px"
 	role="img"
 	aria-label="QR-код подписки"
@@ -53,12 +59,13 @@
 		width: 100%;
 	}
 
-	/* qrcode paints the modules with literal hex; repaint from the tokens instead of passing hex in. */
+	/* qrcode paints the modules with literal hex; repaint them to the contrast the spec expects,
+	   which on the white plate above is plain black — not the theme's ink. */
 	.qr :global(svg path[fill]) {
-		fill: var(--color-surface);
+		fill: #ffffff;
 	}
 
 	.qr :global(svg path[stroke]) {
-		stroke: var(--color-ink);
+		stroke: #000000;
 	}
 </style>

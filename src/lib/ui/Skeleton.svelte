@@ -13,7 +13,7 @@
 <div class="space-y-2" aria-hidden="true">
 	{#each rows as row (row)}
 		<div
-			class="rounded-[6px] bg-ink/[.07] motion-safe:animate-pulse {rows.length > 1 &&
+			class="rounded-full bg-elevated motion-safe:animate-pulse {rows.length > 1 &&
 			row === rows.length - 1
 				? 'w-2/3'
 				: 'w-full'}"

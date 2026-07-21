@@ -25,11 +25,16 @@ async function ready(page: import('@playwright/test').Page) {
 test.describe('reference slice: plans, read-only', () => {
 	test('renders every seeded plan with a server-rendered price', async ({ page }) => {
 		await page.goto('/');
+		await ready(page);
 
-		await expect(page.getByRole('heading', { name: 'Тарифы', level: 1 })).toBeVisible();
+		// No session on this suite's first visit: the dashboard greets a browser visitor by name
+		// only when Telegram has told it one.
+		await expect(page.getByRole('heading', { name: 'Инкогнито', level: 1 })).toBeVisible();
+
+		await page.getByRole('button', { name: 'Купить подписку' }).click();
 
 		for (const name of ['7 дней', '30 дней', '90 дней']) {
-			await expect(page.getByRole('heading', { name, level: 3 })).toBeVisible();
+			await expect(page.getByRole('radio').filter({ hasText: name })).toBeVisible();
 		}
 
 		// Money is the only formatter; a price on screen proves the DTO reached it.
@@ -37,10 +42,13 @@ test.describe('reference slice: plans, read-only', () => {
 		await expect(page.getByText('10,49 $').first()).toBeVisible();
 	});
 
-	test('serves the list without a session, since plans are public', async ({ request }) => {
+	test('serves the shell without a session, since the dashboard is public', async ({ request }) => {
+		// The deck itself only renders once the sheet opens client-side (tech.md 9 still holds: the
+		// load survives locals.user === null), so a plain GET is checked against what IS in the
+		// server-rendered shell instead — the current plan card's own status.
 		const response = await request.get('/');
 		expect(response.status()).toBe(200);
-		expect(await response.text()).toContain('Тарифы');
+		expect(await response.text()).toContain('Нет подписки');
 	});
 });
 

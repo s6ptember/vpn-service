@@ -49,7 +49,7 @@
 
 <div class="w-full">
 	{#if label}
-		<label for={id} class="mb-1.5 block px-1 text-[13px] font-medium text-muted">{label}</label>
+		<label for={id} class="mb-2 block px-1 text-2xs font-medium text-muted">{label}</label>
 	{/if}
 
 	<!-- Svelte rejects bind:value on a dynamic `type`, so the binding is written out by hand. -->
@@ -68,7 +68,7 @@
 		aria-invalid={error ? 'true' : undefined}
 		aria-describedby={error ? errorId : undefined}
 		class={[
-			'h-12 w-full min-w-0 rounded-field bg-surface px-4 text-[15px] text-ink select-text placeholder:text-muted',
+			'h-13 w-full min-w-0 rounded-field border border-line bg-inset px-4 text-sm text-ink select-text placeholder:text-subtle',
 			uppercase &&
 				'font-medium tracking-[.06em] uppercase placeholder:font-normal placeholder:tracking-normal placeholder:normal-case',
 			className
@@ -77,6 +77,6 @@
 	/>
 
 	{#if error}
-		<p id={errorId} class="mt-2 px-1 text-[13px] text-danger-700">{error}</p>
+		<p id={errorId} class="mt-2 px-1 text-2xs text-danger">{error}</p>
 	{/if}
 </div>

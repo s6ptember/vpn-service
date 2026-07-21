@@ -201,7 +201,7 @@ describe('TelegramSession.init', () => {
 		expect(tg.ready).toHaveBeenCalled();
 		// Without this a horizontal swipe collapses the mini app mid-gesture (tech.md 11).
 		expect(tg.disableVerticalSwipes).toHaveBeenCalled();
-		expect(tg.setBackgroundColor).toHaveBeenCalledWith('#F2F2F6');
+		expect(tg.setBackgroundColor).toHaveBeenCalledWith('#101828');
 	});
 
 	it('does nothing but settle when opened outside Telegram', async () => {

@@ -57,7 +57,7 @@
 			pointer convenience, not the only way out.
 		-->
 		<div
-			class="absolute inset-0 bg-ink/40"
+			class="absolute inset-0 bg-black/65"
 			onclick={close}
 			transition:fade={motion}
 			aria-hidden="true"
@@ -70,10 +70,10 @@
 			aria-labelledby={title ? titleId : undefined}
 			tabindex="-1"
 			transition:scale={{ start: 0.96, duration: motion.duration }}
-			class="relative max-h-[85dvh] w-full max-w-[340px] overflow-y-auto rounded-card bg-surface p-4"
+			class="relative max-h-[85dvh] w-full max-w-[340px] overflow-y-auto card p-5"
 		>
 			{#if title}
-				<h2 id={titleId} class="text-[17px] leading-tight font-semibold">{title}</h2>
+				<h2 id={titleId} class="text-h2 leading-tight font-bold tracking-[-.02em]">{title}</h2>
 			{/if}
 
 			<div class={title && 'mt-2'}>

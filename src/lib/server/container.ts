@@ -170,7 +170,7 @@ export const subscriptions = new SubscriptionService(db);
 export const reconcileInput = new ReconcileInputParser();
 
 /** Read model for the pages: one person's access, assembled from three domains (A7, A9). */
-export const access = new SubscriptionReader(subscriptions, orders, plans);
+export const access = new SubscriptionReader(subscriptions, orders, plans, marzban, log);
 
 const worker = new JobWorker(
 	jobs,

@@ -25,13 +25,14 @@
 	 */
 	let clickable = $derived(interactive || Boolean(onclick));
 
+	/**
+	 * One card, no tones. The reference fills nothing with the accent: every card is the same dark
+	 * surface over a hairline, and emphasis is carried by the badge, the button and the section
+	 * heading instead. `card` (app.css) holds the fill, the border and the radius, because that
+	 * trio is what makes a card read as one on this palette — the fill alone is a two-step lift.
+	 */
 	let classes = $derived(
-		[
-			'rounded-card bg-surface',
-			padded ? 'p-4' : '',
-			clickable ? 'press cursor-pointer' : '',
-			className
-		]
+		['card', padded ? 'p-5' : '', clickable ? 'press cursor-pointer' : '', className]
 			.filter(Boolean)
 			.join(' ')
 	);

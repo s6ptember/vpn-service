@@ -77,29 +77,29 @@
 		<Card>
 			<div class="flex items-start gap-3">
 				{#if copy.tone === 'busy'}
-					<span class="spinner mt-0.5 block shrink-0 animate-spin text-accent-600">
+					<span class="spinner mt-0.5 block shrink-0 animate-spin text-accent">
 						<LoaderCircle size={18} aria-hidden="true" />
 					</span>
 				{:else if copy.tone === 'good'}
-					<CircleCheck class="mt-0.5 size-[18px] shrink-0 text-accent-600" aria-hidden="true" />
+					<CircleCheck class="mt-0.5 size-[18px] shrink-0 text-accent" aria-hidden="true" />
 				{:else}
-					<CircleAlert class="mt-0.5 size-[18px] shrink-0 text-danger-700" aria-hidden="true" />
+					<CircleAlert class="mt-0.5 size-[18px] shrink-0 text-danger" aria-hidden="true" />
 				{/if}
 
 				<div class="min-w-0 flex-1">
-					<p class="text-[16px] font-semibold">{copy.title}</p>
-					<p class="mt-1 text-[14px] text-muted">{copy.text}</p>
+					<p class="text-md font-bold">{copy.title}</p>
+					<p class="mt-2 text-2xs text-muted">{copy.text}</p>
 
 					{#if phase === 'ready'}
 						<a
 							href={resolve('/profile')}
 							data-sveltekit-preload-data="tap"
-							class="mt-3.5 inline-flex h-11 items-center rounded-control bg-accent-600 px-4 text-[15px] font-semibold text-white press"
+							class="mt-4 inline-flex press items-center rounded-field bg-accent px-5 py-3.5 text-sm font-bold text-on-accent"
 						>
 							Открыть профиль
 						</a>
 					{:else if phase !== 'waiting' && phase !== 'granting'}
-						<div class="mt-3.5">
+						<div class="mt-4">
 							<Button size="sm" variant="ghost" onclick={ondismiss}>Понятно</Button>
 						</div>
 					{/if}

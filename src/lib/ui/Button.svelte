@@ -28,21 +28,34 @@
 		children
 	}: Props = $props();
 
+	/**
+	 * The accent is a light colour on a dark page, so a primary button inverts: near-black label on
+	 * the accent. White here would be unreadable.
+	 *
+	 * `ghost` is the reference's secondary — a barely-there fill over a hairline, which is what keeps
+	 * a pair of them under a primary from reading as three equal choices.
+	 */
 	const VARIANTS: Record<NonNullable<Props['variant']>, string> = {
-		primary: 'bg-accent-600 font-semibold text-white',
-		ghost: 'bg-ink/[.07] font-medium text-ink',
-		danger: 'bg-danger-600 font-semibold text-white'
+		primary: 'bg-accent font-bold text-on-accent',
+		ghost: 'border border-line bg-white/[0.06] font-medium text-ink',
+		danger: 'bg-danger font-bold text-on-accent'
 	};
 
+	/**
+	 * Size is the reference's two button shapes rather than a free scale: the primary is taller, on
+	 * the wider radius, and a step up in type; the secondary is the compact one that sits in a pair
+	 * beneath it. Height comes from padding, so a label that wraps grows the button instead of
+	 * spilling out of it.
+	 */
 	const SIZES: Record<NonNullable<Props['size']>, string> = {
-		sm: 'h-11 rounded-control',
-		md: 'h-12 rounded-field'
+		sm: 'gap-1.5 rounded-control px-4 py-3 text-xs',
+		md: 'gap-2 rounded-field px-5 py-3.5 text-sm'
 	};
 
 	// Loading dims nothing: it reads as busy, not as unavailable, and the spinner must stay crisp.
 	let classes = $derived(
 		[
-			'press relative inline-flex select-none items-center justify-center px-4 text-[15px]',
+			'press relative inline-flex select-none items-center justify-center leading-tight',
 			VARIANTS[variant],
 			SIZES[size],
 			disabled ? 'opacity-40' : '',
@@ -62,7 +75,7 @@
 	aria-label={ariaLabel}
 >
 	<!-- Label keeps its box while loading, so the button never resizes under the spinner. -->
-	<span class:invisible={loading}>{@render children()}</span>
+	<span class="contents" class:invisible={loading}>{@render children()}</span>
 
 	{#if loading}
 		<span class="pointer-events-none absolute inset-0 grid place-items-center">

@@ -154,7 +154,7 @@
 			/>
 			{#if pricePreview !== null && !errorFor('priceMinor')}
 				<!-- Minor units are what the column holds; this line is what the customer will read. -->
-				<p class="mt-2 px-1 text-[13px] text-muted">
+				<p class="mt-2 px-1 text-3xs text-muted">
 					= <Money minor={pricePreview} {currency} />
 				</p>
 			{/if}
@@ -170,12 +170,12 @@
 		/>
 	</div>
 
-	<label class="flex items-center gap-2.5 px-1 text-[15px]">
+	<label class="flex items-center gap-2.5 px-1 text-sm">
 		<input
 			type="checkbox"
 			name="isActive"
 			bind:checked={fields.isActive}
-			class="size-5 accent-accent-600"
+			class="size-5 accent-accent"
 		/>
 		Показывать на главной
 	</label>

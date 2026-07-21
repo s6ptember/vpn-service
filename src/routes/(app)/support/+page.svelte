@@ -2,6 +2,7 @@
 	import { getContext } from 'svelte';
 	import { TELEGRAM_SESSION_KEY, type TelegramSession } from '$lib/client/telegram.svelte';
 	import EmptyState from '$lib/ui/EmptyState.svelte';
+	import SectionHeading from '$lib/ui/SectionHeading.svelte';
 	import FaqAccordion from './FaqAccordion.svelte';
 	import TicketForm from './TicketForm.svelte';
 	import type { PageProps } from './$types';
@@ -15,20 +16,17 @@
 	<title>Поддержка — VPN</title>
 </svelte:head>
 
-<div class="px-4 pt-[max(16px,env(safe-area-inset-top))] pb-28">
-	<h1 class="text-[28px] font-bold tracking-[-.02em]">Поддержка</h1>
+<div class="px-5 pt-[max(26px,calc(env(safe-area-inset-top)+26px))] pb-32">
+	<!-- Centred, the way the reference titles a screen that has no portrait to anchor it. -->
+	<h1 class="pb-1 text-center text-title font-bold tracking-[-.02em]">Поддержка</h1>
 
 	{#if data.faq.length > 0}
-		<h2 class="mt-5 mb-2 px-1 text-[12px] font-semibold tracking-[.06em] text-muted uppercase">
-			Частые вопросы
-		</h2>
+		<SectionHeading title="Частые вопросы" />
 
 		<FaqAccordion items={data.faq} />
 	{/if}
 
-	<h2 class="mt-7 mb-2 px-1 text-[12px] font-semibold tracking-[.06em] text-muted uppercase">
-		Написать нам
-	</h2>
+	<SectionHeading title="Написать нам" />
 
 	{#if session.user}
 		<TicketForm result={form} />

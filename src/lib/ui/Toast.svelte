@@ -4,11 +4,12 @@
 	import { toasts, type ToastTone } from './toasts.svelte';
 
 	/** The mock only ever shows the glass pill. Success and danger swap the fill instead of layering
-	 *  a colour over `toast-surface`, which sets `background` and would fight a `bg-*` utility. */
+	 *  a colour over `toast-surface`, which sets `background` and would fight a `bg-*` utility.
+	 *  Both filled tones are light colours, so they carry the label rather than inheriting white. */
 	const TONE_SURFACE: Record<ToastTone, string> = {
-		neutral: 'toast-surface',
-		success: 'bg-accent-600',
-		danger: 'bg-danger-600'
+		neutral: 'toast-surface text-ink',
+		success: 'bg-accent text-on-accent',
+		danger: 'bg-danger text-on-accent'
 	};
 
 	let duration = $derived(prefersReducedMotion.current ? 0 : 300);
@@ -25,10 +26,7 @@
 >
 	{#each toasts.items as toast (toast.id)}
 		<div
-			class={[
-				'rounded-full px-4 py-2.5 text-[13px] font-medium text-white',
-				TONE_SURFACE[toast.tone]
-			]}
+			class={['rounded-full px-4 py-2.5 text-2xs font-semibold', TONE_SURFACE[toast.tone]]}
 			in:fly={{ y: prefersReducedMotion.current ? 0 : 8, duration }}
 			out:fade={{ duration }}
 		>

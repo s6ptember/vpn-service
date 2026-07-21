@@ -60,18 +60,18 @@
 
 <div class="w-full">
 	{#if label}
-		<p class="mb-1.5 px-1 text-[13px] text-muted">{label}</p>
+		<p class="mb-2 px-1 text-2xs text-muted">{label}</p>
 	{/if}
 
 	<button
 		type="button"
 		onclick={copy}
 		aria-label={label ? `Скопировать: ${label}` : 'Скопировать'}
-		class="flex w-full items-center gap-2 rounded-control bg-ink/[.05] px-3.5 py-3 text-left press"
+		class="flex w-full press items-center gap-2 rounded-control border border-line bg-inset px-4 py-3.5 text-left"
 	>
-		<span class="truncate font-mono text-[12px] text-muted">{value}</span>
+		<span class="truncate font-mono text-3xs text-muted">{value}</span>
 		{#if copied}
-			<Check class="ml-auto size-4 shrink-0 text-muted" strokeWidth={2.4} aria-hidden="true" />
+			<Check class="ml-auto size-4 shrink-0 text-accent" strokeWidth={2.4} aria-hidden="true" />
 		{:else}
 			<Copy class="ml-auto size-4 shrink-0 text-muted" strokeWidth={1.7} aria-hidden="true" />
 		{/if}

@@ -1,5 +1,5 @@
 import { expect, test, type APIRequestContext, type Page } from '@playwright/test';
-import { FRAME, hydrated, signIn, withId } from './helpers';
+import { FRAME, hydrated, openBuySheet, planOption, signIn, withId } from './helpers';
 
 /**
  * Stage 3 end to end (tech.md 14): initData -> session -> purchase through the fake provider ->
@@ -57,9 +57,6 @@ async function captureCheckoutLinks(page: Page) {
 const openedLinks = (page: Page) =>
 	page.evaluate(() => (window as unknown as { __opened: string[] }).__opened);
 
-const planCard = (page: Page, name: string) =>
-	page.locator('article').filter({ has: page.getByRole('heading', { name, level: 3 }) });
-
 /** The event a paid Stripe session would produce, in our own PaymentEvent shape. */
 const paidEvent = (publicId: string, overrides: Record<string, unknown> = {}) => ({
 	kind: 'paid',
@@ -79,11 +76,22 @@ const postWebhook = (request: APIRequestContext, body: unknown, signature = FAKE
 		data: body
 	});
 
-/** Buys a plan and returns the publicId of the order it opened. */
+/**
+ * Buys a plan and returns the publicId of the order it opened.
+ *
+ * Opens the deck sheet itself, but only when it is not open already: once it is, its own backdrop
+ * sits on top of Купить/Продлить — a second click there would hang waiting for a button a
+ * caller that opened the sheet first (to check the "Продлит доступ до" line, say) cannot reach.
+ */
 async function startCheckout(page: Page, planName = PLAN_NAME): Promise<string> {
-	await planCard(page, planName)
-		.getByRole('button', { name: `Купить тариф ${planName}` })
-		.click();
+	const payButton = page.getByRole('button', { name: `Оплатить тариф ${planName}` });
+
+	if (!(await payButton.isVisible())) {
+		await page.getByRole('button', { name: /^(Купить|Продлить) подписку$/ }).click();
+	}
+
+	await planOption(page, planName).click();
+	await payButton.click();
 
 	await expect.poll(() => openedLinks(page)).toHaveLength(1);
 
@@ -143,11 +151,11 @@ test.describe.serial('buying a subscription', () => {
 		await captureCheckoutLinks(page);
 
 		await page.goto('/');
-		await hydrated(page);
+		await openBuySheet(page);
 
-		// With access live, the card sells an extension rather than a start.
-		const card = planCard(page, PLAN_NAME);
-		await expect(card.getByText(/Продлит доступ до/)).toBeVisible();
+		// With access live, the deck sells an extension rather than a start.
+		await planOption(page, PLAN_NAME).click();
+		await expect(page.getByText(/Продлит доступ до/)).toBeVisible();
 
 		const publicId = await startCheckout(page);
 		const event = paidEvent(publicId);

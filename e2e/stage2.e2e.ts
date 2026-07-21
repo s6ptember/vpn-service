@@ -1,5 +1,13 @@
 import { expect, test, type Page } from '@playwright/test';
-import { ADMIN_CHAT_ID, FRAME, hydrated, signIn, withId } from './helpers';
+import {
+	ADMIN_CHAT_ID,
+	FRAME,
+	hydrated,
+	openBuySheet,
+	planOption,
+	signIn,
+	withId
+} from './helpers';
 
 /**
  * Stage 2's acceptance criteria end to end: the home shows the active plans from the DB with their
@@ -20,12 +28,7 @@ const planName = (suffix: string) => `E2E ${suffix} ${Date.now()}`;
  * first, then ask by label — the labels are what a person reads, and the form is what owns them.
  */
 const cardFor = (page: Page, name: string) =>
-	page.locator('div.rounded-card').filter({ has: page.getByRole('heading', { name, level: 3 }) });
-
-/** The home renders each plan as an <article>. Assertions scope to it, or a price on the wrong
- *  card would still satisfy a page-wide search. */
-const planCard = (page: Page, name: string) =>
-	page.locator('article').filter({ has: page.getByRole('heading', { name, level: 3 }) });
+	page.locator('div.card').filter({ has: page.getByRole('heading', { name, level: 3 }) });
 
 const createForm = (page: Page) => page.locator('form[action="?/create"]');
 const editForm = (page: Page, name: string) =>
@@ -34,37 +37,40 @@ const editForm = (page: Page, name: string) =>
 test.describe('home: plans from the database', () => {
 	test('shows every seeded plan with its duration and price', async ({ page }) => {
 		await page.goto('/');
-		await hydrated(page);
+		await openBuySheet(page);
 
-		await expect(page.getByRole('heading', { name: 'Тарифы', level: 1 })).toBeVisible();
+		// No session, so nothing to extend: the sheet asks somebody to choose rather than to renew.
+		await expect(page.getByRole('heading', { name: 'Выбрать тариф', level: 2 })).toBeVisible();
 
-		// tech.md 11 puts имя, срок and цена on the card. The name is free text, so the duration has
-		// to be written out rather than read out of it.
-		// Every assertion is scoped to its own card: a page-wide search would pass just as happily
-		// with all three prices rendered on one card.
+		// tech.md 11 puts имя, срок and цена on every plan. The name is free text, so the duration is
+		// written out on the row's own second line rather than read out of the name. Every assertion
+		// is scoped to its own row: a page-wide search would pass just as happily with all three
+		// prices rendered against one plan.
 		for (const [name, days, price] of [
-			['7 дней', 'Доступ на 7 дней', '1,49'],
-			['30 дней', 'Доступ на 30 дней', '4,99'],
-			['90 дней', 'Доступ на 90 дней', '10,49']
+			['7 дней', '7 дней', '1,49'],
+			['30 дней', '30 дней', '4,99'],
+			['90 дней', '90 дней', '10,49']
 		]) {
-			const card = planCard(page, name);
+			const option = planOption(page, name);
 
-			await expect(card).toHaveCount(1);
-			await expect(card.getByText(days)).toBeVisible();
-			await expect(card.getByText(price, { exact: false })).toBeVisible();
-			await expect(card.getByText('Безлимитный трафик')).toBeVisible();
+			await expect(option).toHaveCount(1);
+			await expect(option).toContainText(days);
+			await expect(option).toContainText(price);
 		}
 
-		// The seed prices 90 days well under three months of the 7-day rate, so it takes the badge.
-		await expect(planCard(page, '90 дней').getByText('Выгоднее всего')).toBeVisible();
-		await expect(planCard(page, '7 дней').getByText('Выгоднее всего')).toHaveCount(0);
+		// The seed prices 90 days well under three months of the 7-day rate, so it carries the deepest
+		// discount; the 7-day plan is the baseline the others are measured against and never tagged.
+		await expect(planOption(page, '90 дней')).toContainText('−45%');
+		await expect(planOption(page, '30 дней')).toContainText('−21%');
+		await expect(planOption(page, '7 дней')).not.toContainText('%');
 	});
 
 	test('serves the plans to a visitor with no session at all', async ({ page }) => {
 		// Plans are public: the load has to survive locals.user === null (tech.md 9).
 		await page.goto('/');
+		await openBuySheet(page);
 
-		await expect(page.getByRole('heading', { name: '30 дней', level: 3 })).toBeVisible();
+		await expect(planOption(page, '30 дней')).toBeVisible();
 	});
 });
 
@@ -155,9 +161,15 @@ test.describe.serial('admin: plan CRUD', () => {
 
 		// The server owns the price and the currency: 9999 minor units is what the customer sees.
 		await page.goto('/');
-		await expect(page.getByRole('heading', { name: created, level: 3 })).toBeVisible();
-		await expect(page.getByText('10 ГБ трафика')).toBeVisible();
-		await expect(page.getByText('Доступ на 1 день')).toBeVisible();
+		await openBuySheet(page);
+		// Scoped to the new row: both strings are short enough that a page-wide search would also match
+		// whatever else in the deck happens to carry them.
+		const created_ = planOption(page, created);
+		await expect(created_).toBeVisible();
+		// Срок first, then the seller's own line — the traffic limit only surfaces when there is no
+		// подпись to show, and this plan was created with one.
+		await expect(created_).toContainText('1 день');
+		await expect(created_).toContainText('Только для теста');
 
 		// --- edit ---------------------------------------------------------------------------
 		await page.goto('/profile/admin');
@@ -197,8 +209,9 @@ test.describe.serial('admin: plan CRUD', () => {
 		await expect(page.getByRole('heading', { name: renamed, level: 3 })).toHaveCount(0);
 
 		await page.goto('/');
+		await openBuySheet(page);
 		await expect(page.getByRole('heading', { name: renamed, level: 3 })).toHaveCount(0);
-		await expect(page.getByRole('heading', { name: '30 дней', level: 3 })).toBeVisible();
+		await expect(planOption(page, '30 дней')).toBeVisible();
 	});
 
 	test('keeps a plan off the home while it is hidden, without archiving it', async ({
@@ -226,6 +239,7 @@ test.describe.serial('admin: plan CRUD', () => {
 		await expect(cardFor(page, hidden).getByText('Скрыт', { exact: true })).toBeVisible();
 
 		await page.goto('/');
+		await openBuySheet(page);
 		await expect(page.getByRole('heading', { name: hidden, level: 3 })).toHaveCount(0);
 
 		// Leave the run as it was found.

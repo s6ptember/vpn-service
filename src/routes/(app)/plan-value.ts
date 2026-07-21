@@ -37,9 +37,37 @@ export function formatTraffic(bytes: number): string {
 	return bytes === 0 ? 'Безлимитный трафик' : `${gibFromBytes(bytes)} ГБ трафика`;
 }
 
+/** The same fact sized for a pill on a card, where there is room for a value and not a sentence. */
+export function formatTrafficShort(bytes: number): string {
+	return bytes === 0 ? 'Безлимит' : `${gibFromBytes(bytes)} ГБ`;
+}
+
 /** Price per day in minor units, so Money stays the only thing that formats a price (CLAUDE.md 4). */
 export function perDayMinor(plan: PlanDTO): number {
 	return Math.round(plan.priceMinor / plan.durationDays);
+}
+
+/**
+ * The reference tags its longer plans with a discount («−40%»). No column carries a "was" price, and
+ * inventing one would be a claim we cannot back, so the number is measured against the deck itself:
+ * the worst daily rate on offer is the baseline, and every other plan is cheaper than it by however
+ * much it actually is.
+ *
+ * Below 5% there is no tag. A «−2%» reads as a discount somebody is being offered rather than as
+ * rounding noise between two nearly identical rates, and the baseline plan is never tagged at all.
+ *
+ * Floor, not round, and the hard stop at 99: a discount tag may understate the saving but must never
+ * overstate it, and rounding a 99.6% gap up to «−100%» promises the plan is free.
+ */
+export function savingsPercent(plan: PlanDTO, plans: PlanDTO[]): number | null {
+	if (plans.length < 2) return null;
+
+	const worstRate = Math.max(...plans.map((p) => p.priceMinor / p.durationDays));
+	if (worstRate <= 0) return null;
+
+	const percent = Math.floor((1 - plan.priceMinor / plan.durationDays / worstRate) * 100);
+
+	return percent >= 5 && percent < 100 ? percent : null;
 }
 
 /**

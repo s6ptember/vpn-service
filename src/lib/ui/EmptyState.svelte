@@ -12,12 +12,12 @@
 </script>
 
 <Card>
-	<p class="text-[16px] font-semibold">{title}</p>
+	<p class="text-md font-bold">{title}</p>
 	{#if description}
-		<p class="mt-1 text-[14px] text-muted">{description}</p>
+		<p class="mt-2 text-2xs text-muted">{description}</p>
 	{/if}
 	{#if action}
-		<div class="mt-3.5">
+		<div class="mt-4">
 			{@render action()}
 		</div>
 	{/if}

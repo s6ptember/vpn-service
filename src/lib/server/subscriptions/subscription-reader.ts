@@ -1,5 +1,7 @@
-import type { OrderDTO, SubscriptionDTO } from '$lib/types';
+import type { OrderDTO, PlanDTO, SubscriptionDTO } from '$lib/types';
 import { toOrderDTO, type OrderService } from '../billing';
+import type { MarzbanApi } from '../clients/marzban';
+import type { Logger } from '../log';
 import type { PlanService } from '../plans';
 import { foldTerms, type PaidTerm } from './expiry';
 import { toSubscriptionDTO } from './mapper';
@@ -7,6 +9,16 @@ import type { SubscriptionService } from './subscription-service';
 
 export interface AccessView {
 	subscription: SubscriptionDTO | null;
+	/** The plan behind `subscription`, read fresh so a rename or a traffic limit change shows up
+	 *  immediately. Null exactly when `subscription` is null. */
+	plan: PlanDTO | null;
+	/**
+	 * Bytes Marzban reports used since the subscription started. A promise, never awaited here: the
+	 * real client retries on a timeout (tech.md 8) and can take tens of seconds, and nothing on the
+	 * page other than this one line depends on it. SvelteKit streams it in behind the rest of the
+	 * load, and it never rejects — a Marzban outage resolves to null instead of failing the page.
+	 */
+	trafficUsedBytes: Promise<number | null>;
 	/** The order the person is most likely looking at. Drives the "Ждём оплату" screen (A7). */
 	latestOrder: OrderDTO | null;
 	/**
@@ -43,6 +55,8 @@ export class SubscriptionReader {
 		private readonly subscriptions: SubscriptionService,
 		private readonly orders: OrderService,
 		private readonly plans: PlanService,
+		private readonly marzban: MarzbanApi,
+		private readonly log: Logger,
 		opts: SubscriptionReaderOptions = {}
 	) {
 		this.now = opts.now ?? Date.now;
@@ -64,24 +78,35 @@ export class SubscriptionReader {
 		const row = this.subscriptions.findByUser(userId);
 		const latest = this.orders.latest(userId);
 
-		const subscription = row
-			? toSubscriptionDTO(
-					row,
-					// The plan may have been renamed or archived since; the name on screen should be the
-					// one it carries today. A plan that is gone entirely leaves a neutral word rather
-					// than an empty line.
-					this.plans.findById(row.planId)?.name ?? 'Подписка',
-					nowMs
-				)
-			: null;
-
+		// The plan may have been renamed or archived since; the name and the traffic limit on screen
+		// should be the ones it carries today. A plan that is gone entirely leaves a neutral word
+		// rather than an empty line.
+		const plan = row ? this.plans.findById(row.planId) : null;
+		const subscription = row ? toSubscriptionDTO(row, plan?.name ?? 'Подписка', nowMs) : null;
 		const latestOrder = latest ? toOrderDTO(latest) : null;
 
 		return {
 			subscription,
+			plan,
+			trafficUsedBytes: row ? this.#readTraffic(row.marzbanUsername) : Promise.resolve(null),
 			latestOrder,
 			awaitingKey: this.#awaitingKey(userId, subscription, latestOrder)
 		};
+	}
+
+	/**
+	 * Best-effort only: a page showing how much of a plan is left must not fail to render because the
+	 * panel is slow or unreachable. Every failure — timeout, 5xx, a username the panel has never heard
+	 * of — resolves to null rather than rejecting, and the card reads "—" instead of a number.
+	 */
+	async #readTraffic(marzbanUsername: string): Promise<number | null> {
+		try {
+			const user = await this.marzban.getUser(marzbanUsername);
+			return user?.usedTrafficBytes ?? null;
+		} catch (err) {
+			this.log.warn('subscription_traffic_unavailable', { marzbanUsername, error: err });
+			return null;
+		}
 	}
 
 	/**
