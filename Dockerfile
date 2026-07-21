@@ -53,16 +53,20 @@ RUN mkdir -p /data
 RUN --mount=type=secret,id=dotenv,target=/app/.env,required=true \
 	NODE_ENV=production DATABASE_PATH=/data/app.db npm run build
 
-# scripts/migrate.ts is TypeScript and imports src/, while tsx is a devDependency that the prune
-# below removes. Compiling it here beats keeping tsx at runtime: that would drag a bundler, its
-# esbuild binary and the whole TypeScript source tree into production for a one-shot that runs for
-# a second. Prod deps stay external and resolve from node_modules; only our own code is inlined.
+# scripts/*.ts are TypeScript and import src/, while tsx is a devDependency that the prune below
+# removes. Compiling them here beats keeping tsx at runtime: that would drag a bundler, its esbuild
+# binary and the whole TypeScript source tree into production for one-shots that run for a second.
+# Prod deps stay external and resolve from node_modules; only our own code is inlined.
 # --no-install: esbuild is only a transitive dep (of vite and tsx), never a direct one. Without this
 # flag a dependency bump that drops it turns into npx silently fetching an unpinned esbuild from the
 # network into a build that has the real .env mounted. Fail loudly instead.
-RUN npx --no-install esbuild scripts/migrate.ts \
+#
+# seed.ts rides along for the `seed` compose profile (staging fixtures). It is never run in
+# production — it inserts two fake users — but leaving it out of the image would mean a second build
+# variant just for staging.
+RUN npx --no-install esbuild scripts/migrate.ts scripts/seed.ts \
 	--bundle --platform=node --format=esm --target=node22 \
-	--packages=external --outfile=build-scripts/migrate.js
+	--packages=external --outdir=build-scripts
 
 # Drops devDependencies while keeping the better_sqlite3.node compiled above.
 RUN npm prune --omit=dev
