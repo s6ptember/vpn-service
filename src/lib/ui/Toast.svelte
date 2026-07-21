@@ -8,8 +8,8 @@
 	 *  Both filled tones are light colours, so they carry the label rather than inheriting white. */
 	const TONE_SURFACE: Record<ToastTone, string> = {
 		neutral: 'toast-surface text-ink',
-		success: 'bg-accent-600 text-on-accent',
-		danger: 'bg-danger-600 text-on-accent'
+		success: 'bg-accent text-on-accent',
+		danger: 'bg-danger text-on-accent'
 	};
 
 	let duration = $derived(prefersReducedMotion.current ? 0 : 300);

@@ -1,5 +1,6 @@
 <script lang="ts">
 	import type { Snippet } from 'svelte';
+	import { X } from 'lucide-svelte';
 	import { prefersReducedMotion } from 'svelte/motion';
 	import { fade, fly } from 'svelte/transition';
 	import { lockBodyScroll, onEscape, trapFocus } from './dialog';
@@ -7,17 +8,19 @@
 	interface Props {
 		open: boolean;
 		title?: string;
+		/** Sits under the title, in the reference's muted step — one line saying what the sheet wants. */
+		description?: string;
 		children: Snippet;
 	}
 
-	let { open = $bindable(), title, children }: Props = $props();
+	let { open = $bindable(), title, description, children }: Props = $props();
 
 	const titleId = $props.id();
 	let panel = $state<HTMLDivElement | null>(null);
 
 	// Reduced motion kills the slide, not the sheet: it still appears, it just does not travel.
 	let motion = $derived(
-		prefersReducedMotion.current ? { y: 0, duration: 0 } : { y: 320, duration: 260 }
+		prefersReducedMotion.current ? { y: 0, duration: 0 } : { y: 320, duration: 340 }
 	);
 
 	function close() {
@@ -39,11 +42,11 @@
 	<div class="fixed inset-0 z-50 flex items-end justify-center">
 		<!--
 			aria-hidden backdrop: decoration with a shortcut attached, and hidden from the a11y tree so it
-			never announces itself. Escape already closes the sheet from the keyboard, so the click is a
-			pointer convenience, not the only way out.
+			never announces itself. Escape already closes the sheet from the keyboard and the corner
+			button closes it by pointer, so this click is a convenience, not the only way out.
 		-->
 		<div
-			class="absolute inset-0 bg-black/65"
+			class="absolute inset-0 bg-black/55"
 			onclick={close}
 			transition:fade={{ duration: motion.duration }}
 			aria-hidden="true"
@@ -56,13 +59,31 @@
 			aria-labelledby={title ? titleId : undefined}
 			tabindex="-1"
 			transition:fly={motion}
-			class="sheet island relative max-h-[85dvh] w-full max-w-[430px] overflow-y-auto px-4 pt-4 pb-[max(16px,env(safe-area-inset-bottom))]"
+			class="sheet relative no-scrollbar max-h-[90dvh] w-full max-w-[460px] overflow-y-auto px-5 pt-3 pb-[max(22px,calc(env(safe-area-inset-bottom)+22px))]"
 		>
+			<!-- Grab handle. Decoration: the sheet is not draggable, but the reference draws it and it is
+			     what tells somebody the panel is dismissible at all. -->
+			<div class="mx-auto mt-0.5 mb-3 h-1 w-10 rounded-full bg-white/20" aria-hidden="true"></div>
+
 			{#if title}
-				<h2 id={titleId} class="px-1 text-h2 leading-tight font-bold tracking-[-.02em]">{title}</h2>
+				<div class="mb-1.5 flex items-center justify-between gap-3">
+					<h2 id={titleId} class="text-h2 leading-tight font-bold tracking-[-.02em]">{title}</h2>
+					<button
+						type="button"
+						onclick={close}
+						class="grid size-[34px] shrink-0 press place-items-center rounded-full bg-white/[0.06] text-ink"
+						aria-label="Закрыть"
+					>
+						<X class="size-[18px]" aria-hidden="true" />
+					</button>
+				</div>
 			{/if}
 
-			<div class={title && 'mt-4'}>
+			{#if description}
+				<p class="mb-4 text-2xs text-muted">{description}</p>
+			{/if}
+
+			<div class={!description && title ? 'mt-4' : ''}>
 				{@render children()}
 			</div>
 		</div>
@@ -71,19 +92,18 @@
 
 <style>
 	/**
-	 * `island` carries the glass tokens; its pill radius is the only part a sheet cannot use.
+	 * A sheet sits between page and card in the stack, so it gets its own fill rather than borrowing
+	 * either: on `page` it would vanish into the screen it is covering, and on `surface` the cards
+	 * inside it would flatten into one block with gaps.
 	 *
-	 * The fill goes solid as well. The island is a 60px bar where see-through reads as depth, but a
+	 * Solid, not glass. The floating tab bar is a 60px rail where see-through reads as depth, but a
 	 * sheet covers most of the screen: at any transparency the headings behind it print through the
-	 * panel, and the deck ends up competing with the page it is covering. The hairline edge and the
-	 * shadow still come from `island` — those are what make it a sheet rather than a plain block.
-	 *
-	 * Page colour, not surface: a sheet is a page of its own, and the cards it holds are the same
-	 * `bg-surface` they are everywhere else. Filling it with surface would flatten the deck into one
-	 * block with gaps in it. The dimmed backdrop is what separates the sheet from the real page.
+	 * panel and compete with its own content. The top hairline and the upward shadow are what lift it.
 	 */
 	.sheet {
-		border-radius: 28px 28px 0 0;
-		background: var(--color-page);
+		border-radius: 26px 26px 0 0;
+		background: var(--color-sheet);
+		border-top: 1px solid var(--color-line);
+		box-shadow: 0 -24px 60px -24px rgb(0 0 0 / 0.75);
 	}
 </style>

@@ -3,11 +3,7 @@
 	import { LoaderCircle } from 'lucide-svelte';
 
 	interface Props {
-		/**
-		 * `contrast` is the variant for a Card with `tone="accent"`: a primary button there would be
-		 * accent on accent and disappear. Every other variant assumes a dark surface underneath.
-		 */
-		variant?: 'primary' | 'ghost' | 'danger' | 'contrast';
+		variant?: 'primary' | 'ghost' | 'danger';
 		size?: 'sm' | 'md';
 		loading?: boolean;
 		disabled?: boolean;
@@ -34,24 +30,32 @@
 
 	/**
 	 * The accent is a light colour on a dark page, so a primary button inverts: near-black label on
-	 * lavender, the way the reference deck fills its cards. White here would be unreadable.
+	 * the accent. White here would be unreadable.
+	 *
+	 * `ghost` is the reference's secondary — a barely-there fill over a hairline, which is what keeps
+	 * a pair of them under a primary from reading as three equal choices.
 	 */
 	const VARIANTS: Record<NonNullable<Props['variant']>, string> = {
-		primary: 'bg-accent-600 font-semibold text-on-accent',
-		ghost: 'bg-elevated font-medium text-ink',
-		danger: 'bg-danger-600 font-semibold text-on-accent',
-		contrast: 'bg-page font-semibold text-ink'
+		primary: 'bg-accent font-bold text-on-accent',
+		ghost: 'border border-line bg-white/[0.06] font-medium text-ink',
+		danger: 'bg-danger font-bold text-on-accent'
 	};
 
+	/**
+	 * Size is the reference's two button shapes rather than a free scale: the primary is taller, on
+	 * the wider radius, and a step up in type; the secondary is the compact one that sits in a pair
+	 * beneath it. Height comes from padding, so a label that wraps grows the button instead of
+	 * spilling out of it.
+	 */
 	const SIZES: Record<NonNullable<Props['size']>, string> = {
-		sm: 'h-11 text-sm',
-		md: 'h-13 text-body'
+		sm: 'gap-1.5 rounded-control px-4 py-3 text-xs',
+		md: 'gap-2 rounded-field px-5 py-3.5 text-sm'
 	};
 
 	// Loading dims nothing: it reads as busy, not as unavailable, and the spinner must stay crisp.
 	let classes = $derived(
 		[
-			'press relative inline-flex select-none items-center justify-center rounded-full px-5',
+			'press relative inline-flex select-none items-center justify-center leading-tight',
 			VARIANTS[variant],
 			SIZES[size],
 			disabled ? 'opacity-40' : '',
@@ -71,7 +75,7 @@
 	aria-label={ariaLabel}
 >
 	<!-- Label keeps its box while loading, so the button never resizes under the spinner. -->
-	<span class:invisible={loading}>{@render children()}</span>
+	<span class="contents" class:invisible={loading}>{@render children()}</span>
 
 	{#if loading}
 		<span class="pointer-events-none absolute inset-0 grid place-items-center">

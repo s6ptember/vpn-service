@@ -23,20 +23,22 @@
 	let showPhoto = $derived(Boolean(photoUrl) && !broken);
 
 	/**
-	 * The ring is drawn with a box-shadow rather than `ring` + `ring-offset`: Tailwind's offset is
-	 * painted in a flat colour, and this avatar sits on the page and on a card at different times.
-	 * Two shadows — a page-coloured gap, then the accent — keep the gap transparent to whatever is
-	 * actually behind it.
+	 * The portrait is a dark disc with an accent rim, not an accent fill: the reference keeps the
+	 * accent as an outline here, so a photo inside it is never tinted by the ring around it.
+	 *
+	 * The halo is a spread shadow in the accent at 8%, which leaves the gap between rim and halo
+	 * showing whatever is actually behind the avatar. Tailwind's `ring-offset` paints that gap a flat
+	 * colour instead, and this sits on the page and on a card at different times.
 	 */
 	const SIZES: Record<NonNullable<Props['size']>, string> = {
-		sm: 'size-12 text-h3',
-		lg: 'size-24 text-display shadow-[0_0_0_4px_var(--color-page),0_0_0_6px_var(--color-accent-600)]'
+		sm: 'size-[46px] border-2 text-h4 shadow-[0_0_0_4px_rgb(182_202_235/0.08)]',
+		lg: 'size-28 border-[3px] text-display shadow-[0_0_0_6px_rgb(182_202_235/0.08),0_0_44px_-6px_rgb(182_202_235/0.3)]'
 	};
 </script>
 
 <div
 	class={[
-		'grid shrink-0 place-items-center overflow-hidden rounded-full bg-accent-600 font-bold text-on-accent',
+		'grid shrink-0 place-items-center overflow-hidden rounded-full border-accent bg-elevated font-bold text-ink',
 		SIZES[size]
 	]}
 >
@@ -53,6 +55,6 @@
 		<span aria-hidden="true">{initial}</span>
 	{:else}
 		<!-- Nobody signed in: no name, no photo, just the empty-avatar glyph. -->
-		<User class={size === 'lg' ? 'size-10' : 'size-6'} aria-hidden="true" />
+		<User class={size === 'lg' ? 'size-10' : 'size-5'} aria-hidden="true" />
 	{/if}
 </div>

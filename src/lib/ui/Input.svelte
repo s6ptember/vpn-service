@@ -77,6 +77,6 @@
 	/>
 
 	{#if error}
-		<p id={errorId} class="mt-2 px-1 text-xs text-danger-700">{error}</p>
+		<p id={errorId} class="mt-2 px-1 text-xs text-danger">{error}</p>
 	{/if}
 </div>

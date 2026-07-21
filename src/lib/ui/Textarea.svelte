@@ -69,7 +69,7 @@
 	{#if error || counter}
 		<div class="mt-2 flex items-start justify-between gap-3 px-1">
 			{#if error}
-				<p id={errorId} class="text-xs text-danger-700">{error}</p>
+				<p id={errorId} class="text-xs text-danger">{error}</p>
 			{:else}
 				<span></span>
 			{/if}
@@ -77,7 +77,7 @@
 			{#if counter}
 				<p
 					id={counterId}
-					class={['shrink-0 text-xs tabular-nums', over ? 'text-danger-700' : 'text-muted']}
+					class={['shrink-0 text-xs tabular-nums', over ? 'text-danger' : 'text-muted']}
 				>
 					{#if maxlength === undefined}{length}{:else}{length} / {maxlength}{/if}
 				</p>
