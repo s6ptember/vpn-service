@@ -49,7 +49,7 @@
 
 <div class="w-full">
 	{#if label}
-		<label for={id} class="mb-2 block px-1 text-xs font-medium text-muted">{label}</label>
+		<label for={id} class="mb-2 block px-1 text-2xs font-medium text-muted">{label}</label>
 	{/if}
 
 	<textarea
@@ -61,7 +61,7 @@
 		aria-invalid={error || over ? 'true' : undefined}
 		aria-describedby={describedBy}
 		class={[
-			'w-full resize-none rounded-field bg-elevated p-4 text-sm leading-relaxed text-ink select-text placeholder:text-subtle',
+			'w-full resize-none rounded-field border border-line bg-inset p-4 text-sm leading-relaxed text-ink select-text placeholder:text-subtle',
 			className
 		]}
 		{...rest}></textarea>
@@ -69,7 +69,7 @@
 	{#if error || counter}
 		<div class="mt-2 flex items-start justify-between gap-3 px-1">
 			{#if error}
-				<p id={errorId} class="text-xs text-danger">{error}</p>
+				<p id={errorId} class="text-2xs text-danger">{error}</p>
 			{:else}
 				<span></span>
 			{/if}
@@ -77,7 +77,7 @@
 			{#if counter}
 				<p
 					id={counterId}
-					class={['shrink-0 text-xs tabular-nums', over ? 'text-danger' : 'text-muted']}
+					class={['shrink-0 text-3xs tabular-nums', over ? 'text-danger' : 'text-muted']}
 				>
 					{#if maxlength === undefined}{length}{:else}{length} / {maxlength}{/if}
 				</p>

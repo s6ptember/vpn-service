@@ -10,14 +10,19 @@
 	let { name, photoUrl = null }: Props = $props();
 </script>
 
-<!-- The reference opens every screen with the portrait and the greeting on one line, the name in the
-     accent. It is the only place the accent is used as text at this size, which is what makes it
-     read as a greeting rather than as a heading. -->
+<!--
+	The reference opens this screen with the portrait, a quiet greeting and the name in white — not in
+	the accent. The accent is spent once per screen, on the button that does something; spending it on
+	a salutation would leave the card below competing with a greeting.
+
+	The reference also hangs a bell off this corner. There is no notifications feature behind it, and
+	a control that does nothing is worse than an absent one, so the row ends at the name.
+-->
 <div class="flex items-center gap-3">
 	<Avatar {photoUrl} firstName={name} />
-	<div class="min-w-0">
-		<p class="text-xs font-medium text-muted">Добро пожаловать</p>
-		<h1 class="truncate text-h1 font-bold tracking-[-.02em] text-accent-600">
+	<div class="min-w-0 flex-1">
+		<p class="text-2xs leading-tight text-muted">Добро пожаловать,</p>
+		<h1 class="truncate text-h3 leading-tight font-bold tracking-[-.02em]">
 			{name ?? 'Инкогнито'}
 		</h1>
 	</div>

@@ -139,6 +139,10 @@
 	 * indistinguishable at any real viewing distance, and collapsing them turns fifteen ad-hoc sizes
 	 * into twelve steps a screen can actually choose between.
 	 */
+	/* The top step is graphic rather than editorial: it exists for the initial inside the profile
+	   portrait, which is sized by the circle around it and not by any heading it sits near. */
+	--text-display: 40px;
+	--text-display--line-height: 1;
 	--text-title: 24px;
 	--text-title--line-height: 1.15;
 	--text-h1: 22px;

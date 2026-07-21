@@ -3,6 +3,7 @@
 	import { goto } from '$app/navigation';
 	import { resolve } from '$app/paths';
 	import Card from '$lib/ui/Card.svelte';
+	import IconButton from '$lib/ui/IconButton.svelte';
 	import CopyField from '$lib/ui/CopyField.svelte';
 	import QrCode from '$lib/ui/QrCode.svelte';
 	import type { PageProps } from './$types';
@@ -33,18 +34,13 @@
 
 <!-- Not part of the swipe deck (nav.ts: sectionOfPath('/setup') is null), so it carries its own
      way back rather than leaning on the island. -->
-<div class="px-4 pt-[max(16px,env(safe-area-inset-top))] pb-10">
-	<button
-		type="button"
-		class="grid size-11 place-items-center rounded-full bg-surface press"
-		onclick={() => goto(resolve('/'))}
-		aria-label="Назад на главную"
-	>
-		<ArrowLeft class="size-5" aria-hidden="true" />
-	</button>
+<div class="px-5 pt-[max(26px,calc(env(safe-area-inset-top)+26px))] pb-10">
+	<IconButton onclick={() => goto(resolve('/'))} aria-label="Назад на главную">
+		<ArrowLeft class="size-[19px]" strokeWidth={1.9} aria-hidden="true" />
+	</IconButton>
 
 	<h1 class="mt-5 text-h1 font-bold tracking-[-.02em]">Установка и настройка</h1>
-	<p class="mt-2 text-sm text-muted">Три шага — и VPN готов к работе.</p>
+	<p class="mt-2 text-2xs text-muted">Три шага — и VPN готов к работе.</p>
 
 	<ol class="mt-7 list-none space-y-4">
 		{#each STEPS as step, index (step.title)}
@@ -54,14 +50,14 @@
 						<!-- The counter is decoration over an ordered list that already numbers itself;
 						     announcing it again would read every step twice. -->
 						<span
-							class="grid size-9 shrink-0 place-items-center rounded-full bg-accent-600 text-sm font-bold text-on-accent"
+							class="grid size-9 shrink-0 place-items-center rounded-full bg-accent text-xs font-bold text-on-accent"
 							aria-hidden="true"
 						>
 							{index + 1}
 						</span>
 						<div class="min-w-0">
-							<p class="text-body font-semibold">{step.title}</p>
-							<p class="mt-1.5 text-sm text-muted">{step.description}</p>
+							<p class="text-md font-bold">{step.title}</p>
+							<p class="mt-1.5 text-2xs text-muted">{step.description}</p>
 						</div>
 					</div>
 				</Card>

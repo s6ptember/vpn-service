@@ -70,7 +70,7 @@
 </form>
 
 {#if answer?.ok && answer.promo}
-	<p class="mt-2.5 px-1 text-xs font-medium text-accent-700" role="status" aria-live="polite">
+	<p class="mt-2.5 px-1 text-2xs font-medium text-accent" role="status" aria-live="polite">
 		<!--
 			What the CODE is worth, not what this purchase will cost: the final price depends on the
 			plan, and the Stripe floor can eat part of a discount on the cheapest one (tech.md 10). The

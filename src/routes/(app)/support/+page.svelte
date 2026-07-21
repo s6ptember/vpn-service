@@ -16,8 +16,9 @@
 	<title>Поддержка — VPN</title>
 </svelte:head>
 
-<div class="px-4 pt-[max(16px,env(safe-area-inset-top))] pb-28">
-	<h1 class="text-h1 font-bold tracking-[-.02em]">Поддержка</h1>
+<div class="px-5 pt-[max(26px,calc(env(safe-area-inset-top)+26px))] pb-32">
+	<!-- Centred, the way the reference titles a screen that has no portrait to anchor it. -->
+	<h1 class="pb-1 text-center text-title font-bold tracking-[-.02em]">Поддержка</h1>
 
 	{#if data.faq.length > 0}
 		<SectionHeading title="Частые вопросы" />

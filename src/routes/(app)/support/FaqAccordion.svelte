@@ -22,25 +22,33 @@
 	const GROUP = 'faq';
 </script>
 
+<!--
+	Each row carries its own bottom hairline instead of the next one carrying a top border, and the
+	card itself is almost flush top and bottom: the reference runs the rules the full width inside a
+	single card, so the list reads as one block of questions rather than as six stacked cards.
+-->
 <Card padded={false}>
-	<ul>
-		{#each items as item, index (item.id)}
-			<li class={index > 0 ? 'border-t border-line' : ''}>
+	<ul class="px-5 py-0.5">
+		{#each items as item (item.id)}
+			<li class="border-b border-line last:border-b-0">
 				<!-- On the details, not on the summary: `toggle` fires for a tap and for the keyboard
 				     alike, and it cannot fire for a state change that did not happen. -->
 				<details name={GROUP} class="group" ontoggle={() => haptic()}>
-					<summary class="flex cursor-pointer list-none items-start gap-3 p-5 press select-none">
-						<h3 class="min-w-0 flex-1 text-body leading-snug font-semibold">{item.question}</h3>
-						<!-- The span carries the rotation: a class handed to a component is not this
-						     component's element, so scoped styling would never reach the svg. -->
+					<summary
+						class="flex cursor-pointer list-none items-center justify-between gap-3.5 py-[15px] select-none"
+					>
+						<h3 class="min-w-0 flex-1 text-xs leading-snug font-medium">{item.question}</h3>
+						<!-- The span carries the rotation and the colour change: a class handed to a
+						     component is not this component's element, so scoped styling would never
+						     reach the svg. -->
 						<span
-							class="mt-0.5 block shrink-0 text-muted transition-transform duration-200 group-open:rotate-180 motion-reduce:transition-none"
+							class="block shrink-0 text-white/45 transition-[transform,color] duration-[250ms] group-open:rotate-180 group-open:text-accent motion-reduce:transition-none"
 						>
 							<ChevronDown size={20} aria-hidden="true" />
 						</span>
 					</summary>
 
-					<p class="px-5 pb-5 text-sm leading-relaxed text-muted select-text">{item.answer}</p>
+					<p class="pb-4 text-2xs leading-[1.55] text-muted select-text">{item.answer}</p>
 				</details>
 			</li>
 		{/each}

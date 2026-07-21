@@ -1,29 +1,25 @@
 <script lang="ts">
-	import { Globe, Headset, ShieldOff, Zap } from 'lucide-svelte';
+	import { Cpu, EyeOff, Lock } from 'lucide-svelte';
+	import Chip from '$lib/ui/Chip.svelte';
 
 	/**
-	 * Product copy, not domain data — the same status as the feature list on PlanCard (plan-value.ts).
-	 * Static because none of it is a promise the server can verify per plan; it describes the service.
+	 * Product copy, not domain data. Static because none of it is a promise the server can verify per
+	 * plan; it describes the service.
+	 *
+	 * Three, and the protocol split across two of them, exactly as the reference sets this row: it
+	 * wraps to one line on a 360px screen, which a fourth chip would not.
 	 */
 	const FEATURES = [
-		{ icon: ShieldOff, label: 'Без логов' },
-		{ icon: Zap, label: 'XRAY VLESS' },
-		{ icon: Headset, label: 'Поддержка 24/7' },
-		{ icon: Globe, label: 'Все локации' }
+		{ icon: EyeOff, label: 'Без логов' },
+		{ icon: Cpu, label: 'XRAY' },
+		{ icon: Lock, label: 'VLESS' }
 	];
 </script>
 
-<!-- Outlined pills on the page itself, not filled chips on a card: the reference puts exactly this
-     row under the greeting, and an outline keeps it quiet enough to stay a caption for the screen
-     rather than competing with the card below it. -->
-<ul class="mt-5 no-scrollbar flex list-none gap-2 overflow-x-auto" aria-label="Особенности сервиса">
+<ul class="mt-4 flex list-none flex-wrap gap-2" aria-label="Особенности сервиса">
 	{#each FEATURES as feature (feature.label)}
-		{@const Icon = feature.icon}
-		<li
-			class="flex shrink-0 items-center gap-1.5 rounded-full border border-line px-3.5 py-2 text-xs font-medium text-muted"
-		>
-			<Icon class="size-3.5 text-accent-600" aria-hidden="true" />
-			{feature.label}
+		<li>
+			<Chip icon={feature.icon}>{feature.label}</Chip>
 		</li>
 	{/each}
 </ul>

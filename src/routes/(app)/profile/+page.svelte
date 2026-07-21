@@ -9,6 +9,7 @@
 	import Avatar from '$lib/ui/Avatar.svelte';
 	import Button from '$lib/ui/Button.svelte';
 	import Card from '$lib/ui/Card.svelte';
+	import IconButton from '$lib/ui/IconButton.svelte';
 	import EmptyState from '$lib/ui/EmptyState.svelte';
 	import SectionHeading from '$lib/ui/SectionHeading.svelte';
 	import PromoBlock from './PromoBlock.svelte';
@@ -74,25 +75,27 @@
 	<title>Профиль — VPN</title>
 </svelte:head>
 
-<div class="px-4 pt-[max(16px,env(safe-area-inset-top))] pb-28">
+<div class="px-5 pt-[max(26px,calc(env(safe-area-inset-top)+26px))] pb-32">
 	<!--
 		The reference centres this screen's title and hangs its one utility off the corner. The admin
 		entrance is that utility: an icon, hidden from everyone else, and that is all the hiding is —
 		the guard in hooks.server.ts and the isAdmin check inside every admin action are what actually
 		refuse the request (tech.md 9).
 	-->
-	<div class="relative flex items-center justify-center">
+	<div class="flex items-center justify-between gap-3">
+		<!-- Holds the left corner open so the title stays centred whether or not the admin control is
+		     rendered. The reference balances this row with a control on each side; only one of the two
+		     has anything real behind it here. -->
+		<span class="size-10 shrink-0" aria-hidden="true"></span>
+
 		<h1 class="text-h1 font-bold tracking-[-.02em]">Профиль</h1>
 
 		{#if session.isAdmin}
-			<a
-				href={resolve('/profile/admin')}
-				data-sveltekit-preload-data="tap"
-				class="absolute right-0 grid size-11 place-items-center rounded-full bg-surface text-accent-600 press"
-				aria-label="Админка"
-			>
-				<SlidersHorizontal class="size-5" aria-hidden="true" />
-			</a>
+			<IconButton href={resolve('/profile/admin')} aria-label="Админка">
+				<SlidersHorizontal class="size-[19px]" strokeWidth={1.9} aria-hidden="true" />
+			</IconButton>
+		{:else}
+			<span class="size-10 shrink-0" aria-hidden="true"></span>
 		{/if}
 	</div>
 
@@ -100,13 +103,13 @@
 		Shown whether or not anybody is signed in: a browser visitor gets the empty avatar and
 		Инкогнито rather than the whole profile disappearing behind a single sign-in banner.
 	-->
-	<div class="mt-8 flex flex-col items-center text-center">
+	<div class="mt-6 flex flex-col items-center text-center">
 		<Avatar photoUrl={user?.photoUrl ?? null} firstName={user?.firstName ?? null} size="lg" />
-		<p class="mt-5 max-w-full truncate text-h1 font-bold tracking-[-.02em] text-accent-600">
+		<p class="mt-3.5 max-w-full truncate text-h1 font-bold tracking-[-.02em]">
 			{fullName}
 		</p>
 		{#if handle}
-			<p class="mt-1 max-w-full truncate text-sm text-muted">{handle}</p>
+			<p class="mt-0.5 max-w-full truncate text-2xs text-muted">{handle}</p>
 		{/if}
 	</div>
 
@@ -127,13 +130,13 @@
 		<Card>
 			<div class="flex items-start gap-3">
 				{#if waitingPhase !== 'timeout'}
-					<span class="spinner mt-0.5 block shrink-0 animate-spin text-accent-600">
+					<span class="spinner mt-0.5 block shrink-0 animate-spin text-accent">
 						<LoaderCircle size={18} aria-hidden="true" />
 					</span>
 				{/if}
 				<div class="min-w-0" role="status" aria-live="polite">
-					<p class="text-h3 font-semibold">Оплата прошла</p>
-					<p class="mt-1.5 text-sm text-muted">
+					<p class="text-md font-bold">Оплата прошла</p>
+					<p class="mt-2 text-2xs text-muted">
 						{#if waitingPhase === 'timeout'}
 							<!-- The provision job retries with a backoff that can outlast our minute. A
 							     spinner still turning after that would promise something we cannot time. -->

@@ -39,8 +39,8 @@
 				<div class="min-w-0 flex-1">
 					<!-- The snapshot, not the live plan (tech.md 5): a receipt describes what was actually
 					     bought, not what the plan has been renamed or repriced to since. -->
-					<p class="text-sm leading-tight font-semibold">{order.plan.name}</p>
-					<p class="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted">
+					<p class="text-xs leading-tight font-semibold">{order.plan.name}</p>
+					<p class="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-3xs text-muted">
 						{formatDate(dateOf(order))}
 						{#if labelOf(order.status)}
 							{@const label = labelOf(order.status)!}
@@ -48,7 +48,7 @@
 						{/if}
 					</p>
 				</div>
-				<p class="shrink-0 text-body font-bold tabular-nums">
+				<p class="shrink-0 text-xs font-bold tabular-nums">
 					<Money minor={order.finalPriceMinor} currency={order.currency} />
 				</p>
 			</li>

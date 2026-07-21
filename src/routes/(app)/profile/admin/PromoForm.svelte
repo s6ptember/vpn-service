@@ -138,7 +138,7 @@
 			class={CONTROL}
 		/>
 		{#if error}
-			<p id={errorId} class="mt-2 px-1 text-xs text-danger-700">{error}</p>
+			<p id={errorId} class="mt-2 px-1 text-xs text-danger">{error}</p>
 		{/if}
 	</div>
 {/snippet}
@@ -226,7 +226,7 @@
 			type="checkbox"
 			name="isActive"
 			bind:checked={fields.isActive}
-			class="size-5 accent-accent-600"
+			class="size-5 accent-accent"
 		/>
 		Промокод работает
 	</label>

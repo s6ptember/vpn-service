@@ -70,7 +70,7 @@
 			aria-labelledby={title ? titleId : undefined}
 			tabindex="-1"
 			transition:scale={{ start: 0.96, duration: motion.duration }}
-			class="relative max-h-[85dvh] w-full max-w-[340px] overflow-y-auto rounded-card bg-surface p-5"
+			class="relative max-h-[85dvh] w-full max-w-[340px] overflow-y-auto card p-5"
 		>
 			{#if title}
 				<h2 id={titleId} class="text-h2 leading-tight font-bold tracking-[-.02em]">{title}</h2>

@@ -48,6 +48,26 @@ export function perDayMinor(plan: PlanDTO): number {
 }
 
 /**
+ * The reference tags its longer plans with a discount («−40%»). No column carries a "was" price, and
+ * inventing one would be a claim we cannot back, so the number is measured against the deck itself:
+ * the worst daily rate on offer is the baseline, and every other plan is cheaper than it by however
+ * much it actually is.
+ *
+ * Below 5% there is no tag. A «−2%» reads as a discount somebody is being offered rather than as
+ * rounding noise between two nearly identical rates, and the baseline plan is never tagged at all.
+ */
+export function savingsPercent(plan: PlanDTO, plans: PlanDTO[]): number | null {
+	if (plans.length < 2) return null;
+
+	const worstRate = Math.max(...plans.map((p) => p.priceMinor / p.durationDays));
+	if (worstRate <= 0) return null;
+
+	const percent = Math.round((1 - plan.priceMinor / plan.durationDays / worstRate) * 100);
+
+	return percent >= 5 ? percent : null;
+}
+
+/**
  * The mock highlights one card with `best: true`. No column carries that flag and inventing one
  * would be a contract we cannot keep honest, so the badge is derived from the prices themselves:
  * the plan with the lowest daily rate is the best value, by definition.

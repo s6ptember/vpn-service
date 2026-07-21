@@ -78,7 +78,7 @@
 	let reconcileAnswer = $derived(answerFor('reconcile', null));
 
 	/** Red is for refusals. A confirmation in the error colour reads as a failure. */
-	const tone = (ok: boolean) => (ok ? 'text-muted' : 'text-danger-700');
+	const tone = (ok: boolean) => (ok ? 'text-muted' : 'text-danger');
 
 	/**
 	 * The validity window in one line. Both columns are nullable and each combination means something
@@ -192,7 +192,7 @@
 
 					<details class="group mt-3 border-t border-line pt-3">
 						<summary
-							class="flex cursor-pointer list-none items-center justify-between text-sm font-medium press"
+							class="flex press cursor-pointer list-none items-center justify-between text-sm font-medium"
 						>
 							Изменить
 							<!-- The chevron follows the panel: a static one over an open panel is a lie. -->
@@ -334,7 +334,7 @@
 
 					<details class="group mt-3 border-t border-line pt-3">
 						<summary
-							class="flex cursor-pointer list-none items-center justify-between text-sm font-medium press"
+							class="flex press cursor-pointer list-none items-center justify-between text-sm font-medium"
 						>
 							Изменить
 							<ChevronDown
@@ -449,7 +449,7 @@
 					</div>
 
 					{#if job.lastError}
-						<p class="mt-3 text-xs break-words text-danger-700">{job.lastError}</p>
+						<p class="mt-3 text-xs break-words text-danger">{job.lastError}</p>
 					{/if}
 				</Card>
 			{/each}

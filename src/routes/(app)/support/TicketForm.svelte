@@ -85,10 +85,10 @@
 	<div class="mt-3">
 		<Card>
 			<div class="flex items-start gap-3" role="status" aria-live="polite">
-				<CircleCheck class="mt-0.5 size-5 shrink-0 text-accent-600" aria-hidden="true" />
+				<CircleCheck class="mt-0.5 size-5 shrink-0 text-accent" aria-hidden="true" />
 				<div class="min-w-0">
-					<p class="text-h3 font-semibold">Отправили</p>
-					<p class="mt-1.5 text-sm text-muted">Админ ответит вам в личку в Telegram.</p>
+					<p class="text-md font-bold">Отправили</p>
+					<p class="mt-2 text-2xs text-muted">Админ ответит вам в личку в Telegram.</p>
 				</div>
 			</div>
 		</Card>

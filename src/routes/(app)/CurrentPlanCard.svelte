@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { BookOpen } from 'lucide-svelte';
 	import type { PlanDTO, SubscriptionDTO } from '$lib/types';
 	import Badge from '$lib/ui/Badge.svelte';
 	import Button from '$lib/ui/Button.svelte';
@@ -24,13 +25,13 @@
 
 	let { subscription, plan, trafficUsedBytes, onbuy, onsetup, onpromo }: Props = $props();
 
-	/**
-	 * Live access is what this screen is about, so it gets the accent fill and everything else on the
-	 * page stays dark — one spotlight per screen (Card's tone contract). An expired or revoked
-	 * subscription deliberately loses it: a lapsed plan lit up like the hero reads as working.
-	 */
-	let highlighted = $derived(subscription?.status === 'active');
+	let active = $derived(subscription?.status === 'active');
 
+	/**
+	 * The tone carries the warning, the word does not: the reference's pill says «Активен» while
+	 * access lasts, and a plan with two days left is still active. Turning it amber says the same
+	 * thing without writing a second sentence into a pill that has room for one word.
+	 */
 	let tone = $derived<'success' | 'warn' | 'danger' | 'neutral'>(
 		!subscription
 			? 'neutral'
@@ -43,51 +44,52 @@
 
 	let statusLabel = $derived(
 		!subscription
-			? 'Статус отсутствует'
+			? 'Нет подписки'
 			: subscription.status === 'revoked'
 				? 'Отозвана'
 				: subscription.status === 'expired'
 					? 'Закончилась'
-					: `Осталось ${formatDays(subscription.daysLeft)}`
+					: 'Активен'
 	);
 
-	/** Secondary text and rules have to come off the fill, not off the page, once the card is lit. */
-	let dimClass = $derived(highlighted ? 'text-on-accent/70' : 'text-muted');
-	let ruleClass = $derived(highlighted ? 'border-on-accent/15' : 'border-line');
+	let statusLine = $derived(
+		!subscription
+			? 'Выберите тариф, чтобы начать'
+			: subscription.status === 'revoked'
+				? 'Доступ отозван'
+				: subscription.status === 'expired'
+					? `Действовала до ${formatDate(subscription.expiresAt)}`
+					: `Активен ещё ${formatDays(subscription.daysLeft)}`
+	);
 </script>
 
 <SectionHeading title="Текущий план" />
 
-<Card tone={highlighted ? 'accent' : 'surface'}>
+<Card>
 	<div class="flex items-start justify-between gap-3">
 		<div class="min-w-0">
 			<!-- Wraps rather than truncates: a plan name is free text and this is the largest type on
-			     the screen, so an ellipsis here eats most of the word it is naming. -->
-			<p class="text-title font-bold tracking-[-.02em] break-words">
+			     the card, so an ellipsis here eats most of the word it is naming. -->
+			<p class="text-h2 font-bold tracking-[-.02em] break-words">
 				{subscription?.planName ?? 'Нет активного плана'}
 			</p>
-			{#if subscription}
-				<p class={['mt-1.5 text-sm', dimClass]}>
-					{subscription.status === 'active' ? 'Действует до' : 'Действовала до'}
-					{formatDate(subscription.expiresAt)}
-				</p>
-			{/if}
+			<p class="mt-1 text-2xs text-muted">{statusLine}</p>
 		</div>
 		<!-- The pill never wraps, so it must never be squeezed either: the title beside it is what
-		     gives, and it now has the room to. -->
+		     gives, and it has the room to. -->
 		<div class="shrink-0">
-			<Badge {tone}>{statusLabel}</Badge>
+			<Badge {tone} dot={active}>{statusLabel}</Badge>
 		</div>
 	</div>
 
 	{#if subscription}
-		<div class={['mt-4 border-t pt-4', ruleClass]}>
+		<div class="mt-4 border-t border-line pt-4">
 			{#await trafficUsedBytes}
 				<Skeleton height="1rem" />
 			{:then usedBytes}
 				{@const ratio = trafficUsageRatio(usedBytes, plan?.trafficLimitBytes ?? 0)}
 
-				<p class={['text-xs font-medium', dimClass]}>
+				<p class="text-2xs font-medium text-muted">
 					{formatTrafficUsage(usedBytes, plan?.trafficLimitBytes ?? 0)}
 				</p>
 
@@ -99,15 +101,9 @@
 						The number is already in the sentence above, so the bar is decoration and stays
 						out of the a11y tree rather than repeating it as a second announcement.
 					-->
-					<div
-						class={[
-							'mt-2.5 h-1.5 overflow-hidden rounded-full',
-							highlighted ? 'bg-on-accent/20' : 'bg-elevated'
-						]}
-						aria-hidden="true"
-					>
+					<div class="mt-2.5 h-1.5 overflow-hidden rounded-full bg-white/[0.08]" aria-hidden="true">
 						<div
-							class={['h-full rounded-full', highlighted ? 'bg-on-accent' : 'bg-accent-600']}
+							class="h-full rounded-full bg-accent"
 							style:width="{Math.round(ratio * 100)}%"
 						></div>
 					</div>
@@ -116,20 +112,33 @@
 		</div>
 	{/if}
 
-	<div class="mt-5 grid gap-2">
-		<Button
-			variant={highlighted ? 'contrast' : 'primary'}
-			class="w-full"
-			aria-label="Открыть список тарифов"
-			onclick={onbuy}
-		>
-			{subscription?.status === 'active' ? 'Продлить' : 'Купить'}
-		</Button>
-		<div class="grid grid-cols-2 gap-2">
-			<Button variant="ghost" size="sm" onclick={onsetup}>Установить</Button>
-			<Button variant="ghost" size="sm" aria-label="Ввести промокод" onclick={onpromo}>
-				Промокоды
+	<!--
+		The reference leads this card with the instruction and keeps buying to the pair below it. That
+		order only holds once there is access to set up: before a purchase the instruction has nothing
+		to explain, so the primary goes back to being the thing that gets somebody a key.
+	-->
+	<div class="mt-5 grid gap-2.5">
+		{#if active}
+			<Button class="w-full" onclick={onsetup}>
+				<BookOpen class="size-[18px]" strokeWidth={2} aria-hidden="true" />
+				Инструкция по подключению
 			</Button>
-		</div>
+			<div class="grid grid-cols-2 gap-2.5">
+				<Button variant="ghost" size="sm" aria-label="Ввести промокод" onclick={onpromo}>
+					Промокод
+				</Button>
+				<Button variant="ghost" size="sm" aria-label="Продлить подписку" onclick={onbuy}>
+					Продлить
+				</Button>
+			</div>
+		{:else}
+			<Button class="w-full" aria-label="Открыть список тарифов" onclick={onbuy}>Купить</Button>
+			<div class="grid grid-cols-2 gap-2.5">
+				<Button variant="ghost" size="sm" aria-label="Ввести промокод" onclick={onpromo}>
+					Промокод
+				</Button>
+				<Button variant="ghost" size="sm" onclick={onsetup}>Установить</Button>
+			</div>
+		{/if}
 	</div>
 </Card>

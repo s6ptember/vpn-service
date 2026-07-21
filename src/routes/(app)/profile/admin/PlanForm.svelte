@@ -175,7 +175,7 @@
 			type="checkbox"
 			name="isActive"
 			bind:checked={fields.isActive}
-			class="size-5 accent-accent-600"
+			class="size-5 accent-accent"
 		/>
 		Показывать на главной
 	</label>
