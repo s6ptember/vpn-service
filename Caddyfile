@@ -22,6 +22,12 @@
 {
 	# ACME notifications and expiry warnings.
 	email {$ACME_EMAIL}
+
+	# Defaults to the production endpoint; docker-compose.yml supplies it either way, so this is
+	# never empty. Point ACME_CA at Let's Encrypt staging while DNS is still propagating — the
+	# production endpoint rate-limits failed authorisations, and a domain whose A record is not
+	# live yet fails every one of them.
+	acme_ca {$ACME_CA}
 }
 
 # A17 — one year, subdomains included. Both hosts are HTTPS-only and caddy already redirects :80,
