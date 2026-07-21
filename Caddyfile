@@ -1,5 +1,10 @@
 # Two subdomains, per tech.md 3 and 17.5: the mini app on one, only Marzban's /sub/* on the other.
 #
+# The domain is NOT written here. `{$APP_DOMAIN}` and `{$SUB_DOMAIN}` are Caddy env placeholders,
+# substituted when caddy loads this file; docker-compose.yml passes them in from the single .env at
+# the repo root. One file owns the domain, and a typo cannot desynchronise the proxy from the app's
+# PUBLIC_APP_URL — the preflight one-shot compares them before caddy ever starts.
+#
 # READ BEFORE HARDENING THIS FILE. Two headers are missing on purpose:
 #
 #   X-Frame-Options — any value breaks the mini app. Telegram Web and Desktop run it inside an
@@ -15,8 +20,8 @@
 # only party that knows the connection was HTTPS at all. The app sits behind it on plain HTTP.
 
 {
-	# ACME notifications and expiry warnings. Replace before launch.
-	email admin@example.com
+	# ACME notifications and expiry warnings.
+	email {$ACME_EMAIL}
 }
 
 # A17 — one year, subdomains included. Both hosts are HTTPS-only and caddy already redirects :80,
@@ -29,7 +34,7 @@
 	header Strict-Transport-Security "max-age=31536000; includeSubDomains"
 }
 
-app.example.com {
+{$APP_DOMAIN} {
 	import hsts
 	encode zstd gzip
 
@@ -39,13 +44,16 @@ app.example.com {
 	log
 }
 
-sub.example.com {
+{$SUB_DOMAIN} {
 	import hsts
 	encode zstd gzip
 
 	# Clients need their subscription link and nothing else. The panel, /api and /dashboard stay on
 	# the docker network, reachable only through an SSH tunnel (tech.md 3, tech.md 9). Marzban
 	# builds these URLs from XRAY_SUBSCRIPTION_URL_PREFIX, so the path stays /sub/* end to end.
+	#
+	# The wildcard covers the whole family Marzban serves under that prefix — /sub/{token},
+	# /sub/{token}/info and the per-client variants a VPN app fetches when it auto-updates.
 	handle /sub/* {
 		reverse_proxy marzban:8000
 	}
