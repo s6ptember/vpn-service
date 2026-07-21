@@ -55,6 +55,9 @@ export function perDayMinor(plan: PlanDTO): number {
  *
  * Below 5% there is no tag. A «−2%» reads as a discount somebody is being offered rather than as
  * rounding noise between two nearly identical rates, and the baseline plan is never tagged at all.
+ *
+ * Floor, not round, and the hard stop at 99: a discount tag may understate the saving but must never
+ * overstate it, and rounding a 99.6% gap up to «−100%» promises the plan is free.
  */
 export function savingsPercent(plan: PlanDTO, plans: PlanDTO[]): number | null {
 	if (plans.length < 2) return null;
@@ -62,9 +65,9 @@ export function savingsPercent(plan: PlanDTO, plans: PlanDTO[]): number | null {
 	const worstRate = Math.max(...plans.map((p) => p.priceMinor / p.durationDays));
 	if (worstRate <= 0) return null;
 
-	const percent = Math.round((1 - plan.priceMinor / plan.durationDays / worstRate) * 100);
+	const percent = Math.floor((1 - plan.priceMinor / plan.durationDays / worstRate) * 100);
 
-	return percent >= 5 ? percent : null;
+	return percent >= 5 && percent < 100 ? percent : null;
 }
 
 /**

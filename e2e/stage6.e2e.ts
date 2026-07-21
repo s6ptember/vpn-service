@@ -1,5 +1,5 @@
 import { expect, test, type APIRequestContext, type Page } from '@playwright/test';
-import { ADMIN_CHAT_ID, FRAME, hydrated, openBuySheet, signIn, withId } from './helpers';
+import { ADMIN_CHAT_ID, FRAME, buyPlan, hydrated, openBuySheet, signIn, withId } from './helpers';
 
 /**
  * Stage 6, A16 (tech.md 11): the operations half of the panel — recent support requests, jobs that
@@ -38,9 +38,6 @@ const SETTLE = { timeout: 20_000 };
 const section = (page: Page, name: string) =>
 	page.getByRole('heading', { name, level: 2, exact: true });
 
-const planCard = (page: Page, name: string) =>
-	page.locator('article').filter({ has: page.getByRole('heading', { name, level: 3 }) });
-
 async function captureCheckoutLinks(page: Page) {
 	await page.addInitScript(() => {
 		(window as unknown as { __opened: string[] }).__opened = [];
@@ -73,9 +70,7 @@ async function subscribe(page: Page, request: APIRequestContext): Promise<void> 
 	await page.goto('/');
 	await openBuySheet(page);
 
-	await planCard(page, PLAN_NAME)
-		.getByRole('button', { name: new RegExp(`тариф ${PLAN_NAME}`) })
-		.click();
+	await buyPlan(page, PLAN_NAME);
 
 	await expect.poll(() => openedLinks(page)).toHaveLength(1);
 	const [url] = await openedLinks(page);

@@ -111,8 +111,8 @@
 	 * same tokens as the primitives, and they are meant to be deleted the day those land.
 	 */
 	const CONTROL =
-		'h-12 w-full min-w-0 rounded-field bg-surface px-4 text-sm text-ink appearance-none';
-	const LABEL = 'mb-1.5 block px-1 text-xs font-medium text-muted';
+		'h-12 w-full min-w-0 rounded-field border border-line bg-inset px-4 text-sm text-ink appearance-none';
+	const LABEL = 'mb-1.5 block px-1 text-2xs font-medium text-muted';
 </script>
 
 {#snippet dateField(name: 'validFrom' | 'validUntil', label: string)}
@@ -138,7 +138,7 @@
 			class={CONTROL}
 		/>
 		{#if error}
-			<p id={errorId} class="mt-2 px-1 text-xs text-danger">{error}</p>
+			<p id={errorId} class="mt-2 px-1 text-2xs text-danger">{error}</p>
 		{/if}
 	</div>
 {/snippet}
@@ -202,7 +202,7 @@
 			/>
 			{#if fixedPreview !== null && !errorFor('discountValue')}
 				<!-- Minor units are what the column holds; this line is what the customer will save. -->
-				<p class="mt-2 px-1 text-xs text-muted">
+				<p class="mt-2 px-1 text-3xs text-muted">
 					= <Money minor={fixedPreview} {currency} />
 				</p>
 			{/if}

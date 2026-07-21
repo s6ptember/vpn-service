@@ -25,6 +25,9 @@
 </script>
 
 {#if href}
+	<!-- The caller resolves: this component takes a href, not a route id, so resolve() belongs at the
+	     call site, where the route and its parameters are actually known. -->
+	<!-- eslint-disable-next-line svelte/no-navigation-without-resolve -->
 	<a {href} data-sveltekit-preload-data="tap" class="{CLASSES} {className}" aria-label={ariaLabel}>
 		{@render children()}
 	</a>

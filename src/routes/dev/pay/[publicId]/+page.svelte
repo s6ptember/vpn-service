@@ -18,18 +18,18 @@
 <!-- Deliberately plain: this stands in for Stripe's hosted page, and nothing about it ships. -->
 <div class="mx-auto max-w-[430px] px-4 py-10">
 	<h1 class="text-h1 font-bold tracking-[-.02em]">Оплата</h1>
-	<p class="mt-1 text-sm text-muted">Заглушка вместо Stripe. Живёт только в dev.</p>
+	<p class="mt-1 text-2xs text-muted">Заглушка вместо Stripe. Живёт только в dev.</p>
 
 	<div class="mt-6">
 		<Card>
-			<p class="text-h3 font-semibold">{data.plan.name}</p>
-			<p class="mt-1 text-sm text-muted">Заказ {data.publicId} · {data.status}</p>
+			<p class="text-md font-bold">{data.plan.name}</p>
+			<p class="mt-1 text-2xs text-muted">Заказ {data.publicId} · {data.status}</p>
 			<p class="mt-4 text-h1 leading-none font-bold tabular-nums">
 				<Money minor={data.amountMinor} currency={data.currency as Currency} />
 			</p>
 
 			{#if form?.message}
-				<p class="mt-4 text-sm text-muted" role="status">{form.message}</p>
+				<p class="mt-4 text-2xs text-muted" role="status">{form.message}</p>
 			{/if}
 
 			<form

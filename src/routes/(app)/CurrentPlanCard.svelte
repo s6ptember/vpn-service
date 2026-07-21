@@ -132,7 +132,7 @@
 				</Button>
 			</div>
 		{:else}
-			<Button class="w-full" aria-label="Открыть список тарифов" onclick={onbuy}>Купить</Button>
+			<Button class="w-full" aria-label="Купить подписку" onclick={onbuy}>Купить</Button>
 			<div class="grid grid-cols-2 gap-2.5">
 				<Button variant="ghost" size="sm" aria-label="Ввести промокод" onclick={onpromo}>
 					Промокод

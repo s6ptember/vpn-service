@@ -31,10 +31,10 @@ test.describe('reference slice: plans, read-only', () => {
 		// only when Telegram has told it one.
 		await expect(page.getByRole('heading', { name: 'Инкогнито', level: 1 })).toBeVisible();
 
-		await page.getByRole('button', { name: 'Открыть список тарифов' }).click();
+		await page.getByRole('button', { name: 'Купить подписку' }).click();
 
 		for (const name of ['7 дней', '30 дней', '90 дней']) {
-			await expect(page.getByRole('heading', { name, level: 3 })).toBeVisible();
+			await expect(page.getByRole('radio').filter({ hasText: name })).toBeVisible();
 		}
 
 		// Money is the only formatter; a price on screen proves the DTO reached it.
@@ -48,7 +48,7 @@ test.describe('reference slice: plans, read-only', () => {
 		// server-rendered shell instead — the current plan card's own status.
 		const response = await request.get('/');
 		expect(response.status()).toBe(200);
-		expect(await response.text()).toContain('Статус отсутствует');
+		expect(await response.text()).toContain('Нет подписки');
 	});
 });
 

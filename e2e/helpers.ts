@@ -96,11 +96,26 @@ export const hydrated = (page: Page) => expect(page.locator('[data-splash]')).to
 
 /**
  * Opens the bottom sheet holding the plan deck from Главная's Текущий план card. Every stage after
- * the dashboard redesign starts a purchase this way instead of finding the cards already on the
- * page — the button's own aria-label, not its visible "Купить", keeps this from also matching a
- * plan card's own buy button once the sheet is open.
+ * the dashboard redesign starts a purchase this way instead of finding the plans already on the
+ * page.
  */
 export async function openBuySheet(page: Page) {
 	await hydrated(page);
-	await page.getByRole('button', { name: 'Открыть список тарифов' }).click();
+	// Купить before a purchase, Продлить after one — both open this same sheet, and both spell the
+	// visible word into their accessible name so the name still contains the label (WCAG 2.5.3).
+	await page.getByRole('button', { name: /^(Купить|Продлить) подписку$/ }).click();
+}
+
+/** One row of the deck. A radio, not a card: the sheet asks once and pays once. */
+export const planOption = (page: Page, name: string) =>
+	page.getByRole('radio').filter({ hasText: name });
+
+/**
+ * Picks a plan and pays for it — the two steps the redesigned sheet splits a purchase into. The pay
+ * button names the plan it would charge for, so this fails loudly if the selection did not take
+ * rather than quietly buying whatever was selected by default.
+ */
+export async function buyPlan(page: Page, name: string) {
+	await planOption(page, name).click();
+	await page.getByRole('button', { name: `Оплатить тариф ${name}` }).click();
 }

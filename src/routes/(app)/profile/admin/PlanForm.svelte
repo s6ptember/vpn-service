@@ -154,7 +154,7 @@
 			/>
 			{#if pricePreview !== null && !errorFor('priceMinor')}
 				<!-- Minor units are what the column holds; this line is what the customer will read. -->
-				<p class="mt-2 px-1 text-xs text-muted">
+				<p class="mt-2 px-1 text-3xs text-muted">
 					= <Money minor={pricePreview} {currency} />
 				</p>
 			{/if}

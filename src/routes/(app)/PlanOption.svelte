@@ -1,7 +1,7 @@
 <script lang="ts">
 	import type { PlanDTO } from '$lib/types';
 	import Money from '$lib/ui/Money.svelte';
-	import { formatTraffic, savingsPercent } from './plan-value';
+	import { formatDays, formatTraffic, savingsPercent } from './plan-value';
 
 	interface Props {
 		plan: PlanDTO;
@@ -17,8 +17,15 @@
 
 	let savings = $derived(savingsPercent(plan, plans));
 
-	/** The seller's own line if there is one, otherwise the fact the plan is actually sold on. */
-	let subtitle = $derived(plan.description ?? formatTraffic(plan.trafficLimitBytes));
+	/**
+	 * tech.md 11 puts the срок on every plan, and `name` is free text: the reference gets away with a
+	 * bare «Оптимальный выбор» only because its plans happen to be named after their durations. A
+	 * plan called «Стартовый» would otherwise show no duration anywhere, so it leads this line and the
+	 * seller's own copy follows it — or the traffic limit, when there is no copy to show.
+	 */
+	let subtitle = $derived(
+		`${formatDays(plan.durationDays)} · ${plan.description ?? formatTraffic(plan.trafficLimitBytes)}`
+	);
 </script>
 
 <!--

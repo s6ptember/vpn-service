@@ -253,7 +253,7 @@
 				aria-label={selectedPlan ? `Оплатить тариф ${selectedPlan.name}` : 'Оплатить'}
 			>
 				<CreditCard class="size-[18px]" strokeWidth={2} aria-hidden="true" />
-				{active ? 'Продлить' : 'Оплатить'}
+				Оплатить
 			</Button>
 		</form>
 

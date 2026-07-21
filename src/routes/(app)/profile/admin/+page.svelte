@@ -113,11 +113,11 @@
 	<title>Админка — VPN</title>
 </svelte:head>
 
-<div class="px-4 pt-[max(16px,env(safe-area-inset-top))] pb-28">
+<div class="px-5 pt-[max(26px,calc(env(safe-area-inset-top)+26px))] pb-32">
 	<h1 class="text-h1 font-bold tracking-[-.02em]">Админка</h1>
 
 	{#if banner}
-		<p class="mt-4 rounded-card bg-surface p-5 text-sm" role="status">{banner}</p>
+		<p class="mt-4 card p-5 text-2xs" role="status">{banner}</p>
 	{/if}
 
 	<SectionHeading title="Тарифы">
@@ -177,7 +177,7 @@
 									<Badge tone="warn">Скрыт</Badge>
 								{/if}
 							</div>
-							<p class="mt-1.5 text-xs text-muted">
+							<p class="mt-1.5 text-3xs text-muted">
 								{formatDays(plan.durationDays)} · {formatTraffic(plan.trafficLimitBytes)} · порядок {plan.sortOrder}
 							</p>
 						</div>
@@ -241,7 +241,7 @@
 		</div>
 	{/if}
 
-	<p class="mt-4 px-1 text-xs text-muted">
+	<p class="mt-4 px-1 text-3xs text-muted">
 		Тарифы не удаляются: заказы ссылаются на них, поэтому архивный тариф просто исчезает из списка и
 		с главной.
 	</p>
@@ -310,7 +310,7 @@
 									<Badge tone="neutral">Разобрали</Badge>
 								{/if}
 							</div>
-							<p class="mt-1.5 text-xs text-muted">
+							<p class="mt-1.5 text-3xs text-muted">
 								{formatPromoWindow(promo.validFrom, promo.validUntil)}
 							</p>
 						</div>
@@ -322,7 +322,7 @@
 									−<Money minor={promo.discountValue} currency={data.currency} />
 								{/if}
 							</p>
-							<p class="mt-1.5 text-xs text-muted tabular-nums">
+							<p class="mt-1.5 text-3xs text-muted tabular-nums">
 								{promo.usedCount} / {promo.maxUses ?? '∞'}
 							</p>
 						</div>
@@ -377,7 +377,7 @@
 		</div>
 	{/if}
 
-	<p class="mt-4 px-1 text-xs text-muted">
+	<p class="mt-4 px-1 text-3xs text-muted">
 		Использование засчитывается после оплаты. Один промокод применяется один раз на человека.
 	</p>
 
@@ -401,7 +401,7 @@
 								<h3 class="text-sm leading-none font-semibold">#{ticket.id}</h3>
 								<Badge tone={TICKET_TONE[ticket.status]}>{TICKET_LABEL[ticket.status]}</Badge>
 							</div>
-							<p class="mt-1.5 text-xs text-muted">
+							<p class="mt-1.5 text-3xs text-muted">
 								{ticket.author.name}
 								{#if ticket.author.username}
 									· @{ticket.author.username}
@@ -410,7 +410,7 @@
 								{/if}
 							</p>
 						</div>
-						<p class="shrink-0 text-xs text-muted tabular-nums">
+						<p class="shrink-0 text-3xs text-muted tabular-nums">
 							{formatDate(ticket.createdAt)}
 						</p>
 					</div>
@@ -421,7 +421,7 @@
 		</div>
 	{/if}
 
-	<p class="mt-4 px-1 text-xs text-muted">
+	<p class="mt-4 px-1 text-3xs text-muted">
 		Текст письма целиком приходит в личку — здесь только начало, чтобы узнать обращение.
 	</p>
 
@@ -441,22 +441,22 @@
 					<div class="flex items-start justify-between gap-3">
 						<div class="min-w-0">
 							<h3 class="text-sm leading-none font-semibold break-all">{job.type}</h3>
-							<p class="mt-1.5 text-xs text-muted tabular-nums">
+							<p class="mt-1.5 text-3xs text-muted tabular-nums">
 								#{job.id} · попыток {job.attempts} из {job.maxAttempts}
 							</p>
 						</div>
-						<p class="shrink-0 text-xs text-muted tabular-nums">{formatDate(job.updatedAt)}</p>
+						<p class="shrink-0 text-3xs text-muted tabular-nums">{formatDate(job.updatedAt)}</p>
 					</div>
 
 					{#if job.lastError}
-						<p class="mt-3 text-xs break-words text-danger">{job.lastError}</p>
+						<p class="mt-3 text-3xs break-words text-danger">{job.lastError}</p>
 					{/if}
 				</Card>
 			{/each}
 		</div>
 	{/if}
 
-	<p class="mt-4 px-1 text-xs text-muted">
+	<p class="mt-4 px-1 text-3xs text-muted">
 		Джоб попадает сюда, когда кончились попытки. Перезапуск из панели не предусмотрен — почините
 		причину и поставьте работу заново.
 	</p>
@@ -476,7 +476,7 @@
 		</Card>
 	</div>
 
-	<p class="mt-4 px-1 text-xs text-muted">
+	<p class="mt-4 px-1 text-3xs text-muted">
 		Сверка приводит панель к тому, что записано у нас: дату окончания и доступ. Наша запись ведущая,
 		из Marzban ничего не читается обратно. Повторный запуск в течение часа ничего не добавит.
 	</p>
