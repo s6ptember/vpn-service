@@ -245,6 +245,9 @@
 
 /* The tab bar floats over the page, so it is the one place that leans on blur. */
 @utility island {
+	/* The travelling pill is absolute against this rail. Without it the pill escapes to the <nav>,
+	   which spans the whole width, and parks itself off the left edge of the bar. */
+	position: relative;
 	background: rgb(36 36 36 / 0.92);
 	backdrop-filter: blur(14px);
 	-webkit-backdrop-filter: blur(14px);
