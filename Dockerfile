@@ -50,19 +50,31 @@ RUN mkdir -p /data
 #   /app/data/app.db inside the container: the app's writable layer, not the app-data volume that
 #   app-migrate just migrated. The app would boot against an empty, table-less database and lose it
 #   on every recreate. env_file cannot fix this after the fact; only the build-time value counts.
+#
+# DOTENV_HASH is what makes an .env edit rebuild this layer at all. .dockerignore keeps .env out of
+# the context and BuildKit keeps secret-mount contents out of the cache key, so without this the
+# build below is a cache hit forever: rotate a Stripe key or change the domain and the image quietly
+# keeps the old values while reporting success. It is referenced in the command purely so the value
+# participates in the cache key. scripts/deploy.sh computes it; a bare `docker compose build` passes
+# `unset` and gets one sticky cache entry, which is why the README points at the script.
+ARG DOTENV_HASH=unset
 RUN --mount=type=secret,id=dotenv,target=/app/.env,required=true \
-	NODE_ENV=production DATABASE_PATH=/data/app.db npm run build
+	DOTENV_HASH="${DOTENV_HASH}" NODE_ENV=production DATABASE_PATH=/data/app.db npm run build
 
-# scripts/migrate.ts is TypeScript and imports src/, while tsx is a devDependency that the prune
-# below removes. Compiling it here beats keeping tsx at runtime: that would drag a bundler, its
-# esbuild binary and the whole TypeScript source tree into production for a one-shot that runs for
-# a second. Prod deps stay external and resolve from node_modules; only our own code is inlined.
+# scripts/*.ts are TypeScript and import src/, while tsx is a devDependency that the prune below
+# removes. Compiling them here beats keeping tsx at runtime: that would drag a bundler, its esbuild
+# binary and the whole TypeScript source tree into production for one-shots that run for a second.
+# Prod deps stay external and resolve from node_modules; only our own code is inlined.
 # --no-install: esbuild is only a transitive dep (of vite and tsx), never a direct one. Without this
 # flag a dependency bump that drops it turns into npx silently fetching an unpinned esbuild from the
 # network into a build that has the real .env mounted. Fail loudly instead.
-RUN npx --no-install esbuild scripts/migrate.ts \
+#
+# seed.ts rides along for the `seed` compose profile (staging fixtures). It is never run in
+# production — it inserts two fake users — but leaving it out of the image would mean a second build
+# variant just for staging. set-webhook.ts is the `webhook` profile, run once per environment.
+RUN npx --no-install esbuild scripts/migrate.ts scripts/seed.ts scripts/set-webhook.ts \
 	--bundle --platform=node --format=esm --target=node22 \
-	--packages=external --outfile=build-scripts/migrate.js
+	--packages=external --outdir=build-scripts
 
 # Drops devDependencies while keeping the better_sqlite3.node compiled above.
 RUN npm prune --omit=dev

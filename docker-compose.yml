@@ -1,50 +1,107 @@
-# Topology from tech.md 3: caddy + app + app-migrate (one-shot) + marzban on one VPS.
+# Topology from tech.md 3: caddy + app + app-migrate (one-shot) + marzban, plus the two one-shots
+# that make the panel configure itself (marzban-init before it, marzban-check after it).
+#
+# `docker compose up -d` on a fresh VPS is the whole deploy. Nothing is created by hand afterwards:
+# no panel admin, no Xray keys, no config file.
 #
 # The image is built HERE, on the host that owns .env, and never leaves it. That is not a
 # convenience: config.ts reads $env/static/private, so vite inlines the secrets into build/ at
 # build time (see Dockerfile), which makes the image itself a secret. There is no registry push
 # and no CD in this stage by design.
+#
+# One .env at the repo root feeds everything — the app through env_file, marzban and caddy through
+# ${...} interpolation. The domain therefore exists in one file, and marzban-init refuses to run if
+# its four spellings disagree.
 
 name: vpn-service
 
+# The default json-file driver keeps every byte forever. On a one-VPS deploy that ends one way: the
+# disk fills, SQLite starts answering SQLITE_FULL, and the app stops taking money while still
+# serving reads. Caddy logs a line per request on both hosts, so this is the likeliest way to get
+# there.
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: '10m'
+    max-file: '3'
+
+# Split out of the x-app anchor below so app-seed can layer it OVER its env_file: `environment`
+# outranks env_file, and .env carries dev values for NODE_ENV and DATABASE_PATH that would otherwise
+# win and send a container to the wrong database.
+x-app-env: &app-env
+  # The image already declares production; this is belt and braces for a container that must never
+  # misreport its own environment. The compiled bundle is unaffected either way — DEV is frozen at
+  # build time (see Dockerfile).
+  NODE_ENV: production
+  # Reaches build-scripts/migrate.js and seed.js, which read process.env directly. It does NOT
+  # reach config.ts: that value was inlined at build time. The Dockerfile pins the build-time value
+  # to this same path so the app and the migrator open one file rather than two.
+  DATABASE_PATH: /data/app.db
+  # Read by adapter-node's handler, not by config.ts. Without it getClientAddress() returns the
+  # socket peer — which behind caddy is caddy's own container IP, collapsing every per-IP limit
+  # (CLAUDE.md 2) into one bucket shared by the whole application.
+  #
+  # Depth 1 means "the last entry of X-Forwarded-For", and that entry is the one caddy appends
+  # itself. Anything a client sends in that header sits to the left of it and is never read, so a
+  # spoofed value cannot buy its own budget. Raising the depth would start trusting client input.
+  ADDRESS_HEADER: x-forwarded-for
+  XFF_DEPTH: '1'
+  # Without it adapter-node derives the origin from the Host header, which is client-controlled.
+  # That origin is what SvelteKit's CSRF check compares against — and the session cookie is
+  # sameSite:'none' by necessity (tech.md 9), so that check is the only thing standing between a
+  # cross-site POST and a real session. Pin it to the one origin this app is ever served on.
+  ORIGIN: ${PUBLIC_APP_URL:?PUBLIC_APP_URL is required}
+
 # app and app-migrate are the same artefact and must never drift apart.
+#
+# NOTE the absence of `env_file: .env`. Compose would load the WHOLE file into a long-lived
+# container's environment, where it is readable through `docker inspect`, /proc/1/environ and any
+# crash dump — including the panel's sudo password and the REALITY private key, neither of which the
+# app has any use for. The app reads nothing from process.env at runtime (config.ts values are
+# inlined at build time), so everything it genuinely needs is listed explicitly above.
 x-app: &app
   build:
     context: .
     dockerfile: Dockerfile
     secrets:
       - dotenv
+    args:
+      # BuildKit deliberately keeps secret-mount contents out of the cache key, and .dockerignore
+      # keeps .env out of the build context — so editing .env changes no layer input and
+      # `docker compose build` is a no-op that silently reuses the old inlined secrets and domain.
+      # This arg is the cache key: scripts/deploy.sh sets it to a hash of .env.
+      DOTENV_HASH: ${DOTENV_HASH:-unset}
   image: vpn-service-app:local
-  env_file: .env
-  environment:
-    # env_file is layered over the image's ENV, so a .env written for local dev silently downgrades
-    # the container. `environment` outranks env_file and is the only place that can pin these two.
-    #
-    # NODE_ENV: the image already declares production, but .env carries NODE_ENV=development and
-    # would win. The compiled bundle is unaffected (DEV is frozen at build time — see Dockerfile),
-    # yet libraries branch on this at runtime and a container that misreports its own environment is
-    # a debugging trap. Pin it.
-    NODE_ENV: production
-    # Load-bearing, and NOT redundant with the Dockerfile's ENV of the same name: env_file is
-    # applied on top of image ENV, so .env's dev value (./data/app.db) would otherwise win here and
-    # send the migrate script to /app/data/app.db instead of the volume. `environment` outranks
-    # env_file, which puts it back.
-    #
-    # This reaches build-scripts/migrate.js, which reads process.env directly. It does NOT reach
-    # config.ts: that value was inlined at build time. The Dockerfile pins the build-time value to
-    # this same path so the app and the migrator open one file rather than two.
-    DATABASE_PATH: /data/app.db
-    # Read by adapter-node's handler, not by config.ts. Without it getClientAddress() returns the
-    # socket peer — which behind caddy is caddy's own container IP, collapsing every per-IP limit
-    # (CLAUDE.md 2) into one bucket shared by the whole application.
-    #
-    # Depth 1 means "the last entry of X-Forwarded-For", and that entry is the one caddy appends
-    # itself. Anything a client sends in that header sits to the left of it and is never read, so a
-    # spoofed value cannot buy its own budget. Raising the depth would start trusting client input.
-    ADDRESS_HEADER: x-forwarded-for
-    XFF_DEPTH: '1'
+  environment: *app-env
   volumes:
     - app-data:/data
+
+# Shared by the panel and by both one-shots that run against its database. Every value here is a
+# correction of an upstream default that would otherwise be wrong for this stack.
+x-marzban-env: &marzban-env
+  # Upstream defaults to `sqlite:///db.sqlite3`, RELATIVE to WORKDIR /code — i.e. the container's
+  # own writable layer, not the volume. Left alone, every `docker compose up --force-recreate` or
+  # image bump silently starts with an empty panel: no admins, no users, no subscriptions. The four
+  # slashes are the absolute-path form and are not a typo.
+  SQLALCHEMY_DATABASE_URL: sqlite:////var/lib/marzban/db.sqlite3
+  # Same story: the default `./xray_config.json` resolves inside the image. Pointing it at the
+  # volume is what lets marzban-init render the config once and keep it across upgrades.
+  XRAY_JSON: /var/lib/marzban/xray_config.json
+  # Without this the API returns a RELATIVE subscription path and the client renders a broken QR
+  # (tech.md 3). It is the panel's half of the same domain that PUBLIC_APP_URL pins for the app.
+  XRAY_SUBSCRIPTION_URL_PREFIX: https://${SUB_DOMAIN:?SUB_DOMAIN is required}
+  # Pinned because the Caddyfile matcher is literally `/sub/*`. Upstream defaults this to "sub", so
+  # leaving it implicit couples a proxy route to someone else's default.
+  XRAY_SUBSCRIPTION_PATH: sub
+  # The panel is not public, so its API docs have no audience but an attacker.
+  DOCS: 'false'
+  # Not merely noisy: DEBUG=true makes the dashboard shell out to `npm`, which the runtime image
+  # does not carry, and the container exits 3 before serving anything.
+  DEBUG: 'false'
+  JWT_ACCESS_TOKEN_EXPIRE_MINUTES: '1440'
+  # SUDO_USERNAME/SUDO_PASSWORD are deliberately absent. They grant a sudo login that lives only in
+  # the environment with no database row behind it: it cannot be revoked from the panel, and any VPN
+  # user created through it is stored with admin_id NULL. marzban-init creates real admins instead.
 
 services:
   caddy:
@@ -54,15 +111,26 @@ services:
       - '80:80'
       - '443:443'
       - '443:443/udp' # HTTP/3
+    environment:
+      # The Caddyfile carries no domain of its own — these fill its {$...} placeholders.
+      APP_DOMAIN: ${APP_DOMAIN:?APP_DOMAIN is required}
+      SUB_DOMAIN: ${SUB_DOMAIN:?SUB_DOMAIN is required}
+      ACME_EMAIL: ${ACME_EMAIL:?ACME_EMAIL is required}
+      # Point this at Let's Encrypt staging while DNS is still settling. The production endpoint
+      # rate-limits failed authorisations, and a domain whose A record is not live yet fails every
+      # one of them.
+      ACME_CA: ${ACME_CA:-https://acme-v02.api.letsencrypt.org/directory}
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
       # Certificates and ACME account keys. Without these volumes every restart re-issues from
       # Let's Encrypt and walks straight into the rate limit.
       - caddy-data:/data
       - caddy-config:/config
-    depends_on:
-      - app
-      - marzban
+    logging: *logging
+    # No depends_on, deliberately. Caddy resolves `reverse_proxy` upstreams lazily, per request, and
+    # answers 502 for a dead one — so ordering buys nothing. It costs plenty: gating caddy on marzban
+    # means any marzban-init failure takes the mini app off the internet too, and takes the
+    # certificates with it.
     healthcheck:
       test: ['CMD', 'caddy', 'version']
       interval: 30s
@@ -72,6 +140,7 @@ services:
   app:
     <<: *app
     restart: unless-stopped
+    logging: *logging
     # Never published. Caddy is the only way in (tech.md 3).
     expose:
       - '3000'
@@ -84,6 +153,9 @@ services:
       # setInterval — a second replica would double every job (tech.md 3, tech.md 6).
       replicas: 1
     # Healthcheck is inherited from the Dockerfile.
+    #
+    # Deliberately NOT waiting on marzban: the app is the source of truth for money and must keep
+    # selling while the panel is down. Provisioning is a job, and jobs retry (tech.md 6).
 
   app-migrate:
     <<: *app
@@ -94,54 +166,170 @@ services:
       # Inherited from the Dockerfile and meaningless here: this service serves no HTTP.
       disable: true
 
-  marzban:
-    # Pinned, never `latest` (tech.md 2). v0.8.4 is the newest STABLE upstream release.
-    # Checked 2026-07-17: v0.8.4 was published 2025-01-09 and is the latest GitHub release;
-    # v1.0.0 has been in beta since 2025-07 and the last image push of any kind was 2025-08.
-    # ~18 months without a stable release is exactly the upstream-liveness signal tech.md 17.6
-    # asks the lead to weigh before launch. Re-check then; MarzbanApi keeps the swap cheap.
-    image: gozargah/marzban:v0.8.4
-    restart: unless-stopped
-    env_file: ./marzban/.env
+  # Fixtures for a staging box: plans, promo codes, FAQ — and two fake users, which is exactly why
+  # it is opt-in. Production gets its plans from the admin panel.
+  #   docker compose --profile seed up app-seed
+  app-seed:
+    <<: *app
+    profiles: ['seed']
+    restart: 'no'
+    # The only service that reads .env at runtime: seed.ts takes PRICE_CURRENCY and ADMIN_CHAT_ID
+    # from process.env. It is a short-lived one-shot on a staging box, so the wider environment
+    # costs nothing here.
+    env_file: .env
     environment:
-      # Set here rather than only in the env file because forgetting it is silent and expensive:
-      # the API returns a relative subscription path, and the client renders a broken QR
-      # (tech.md 3). An explicit `environment` entry also wins over env_file.
-      XRAY_SUBSCRIPTION_URL_PREFIX: https://sub.example.com
-      # Pinned because the Caddyfile matcher is literally `/sub/*`. Upstream defaults this to
-      # "sub", so leaving it implicit couples a proxy route to someone else's default.
-      XRAY_SUBSCRIPTION_PATH: sub
-      UVICORN_HOST: 0.0.0.0
-      UVICORN_PORT: '8000'
-    ports:
-      # VLESS traffic only.
-      #
-      # CONFLICT, lead must decide before launch: tech.md 3 gives Marzban both 443 and 8443 while
-      # also putting Caddy on 443. One host cannot bind 443 twice — publishing both makes
-      # `docker compose up` fail with "port is already allocated". 8443 is published here so the
-      # stack starts. Resolving 443 needs a second host IP ("<ip>:443:443"), or REALITY settling
-      # for 8443, or an SNI-routing Caddy build (caddy-l4, a non-standard image).
-      - '8443:8443'
-      # Port 8000 is deliberately NOT published: the panel and its /api stay on the docker network,
-      # reachable only via SSH tunnel. Caddy exposes just /sub/* (tech.md 3, tech.md 9).
-    expose:
-      - '8000'
+      <<: *app-env
+    command: ['node', 'build-scripts/seed.js']
+    depends_on:
+      app-migrate:
+        condition: service_completed_successfully
+    healthcheck:
+      disable: true
+
+  # Points Telegram at this deployment's webhook (tech.md 9). Run once per environment, and again
+  # after the domain or TELEGRAM_WEBHOOK_SECRET changes:
+  #   docker compose --profile webhook up app-set-webhook
+  #
+  # Opt-in rather than part of the deploy because Telegram validates the TLS certificate at
+  # registration time: on a first deploy it would race Caddy's first ACME order and lose. Reads
+  # .env because the script takes its values from process.env, like the other one-shot scripts.
+  app-set-webhook:
+    <<: *app
+    profiles: ['webhook']
+    restart: 'no'
+    env_file: .env
+    environment:
+      <<: *app-env
+    command: ['node', 'build-scripts/set-webhook.js']
+    healthcheck:
+      disable: true
+
+  # Everything an operator would otherwise do by hand after the panel's first boot. Renders the Xray
+  # REALITY config with freshly generated keys, migrates the panel database, and creates both admin
+  # accounts. Idempotent: a second run keeps the keys and leaves the admins alone.
+  #
+  # The order inside init.sh is forced by upstream: Marzban parses XRAY_JSON at import time, and both
+  # alembic and marzban-cli import the whole app package — so neither will run until the config file
+  # exists and parses.
+  marzban-init:
+    image: gozargah/marzban:v0.8.4
+    restart: 'no'
+    environment:
+      <<: *marzban-env
+      # Checked against each other before anything is written — see init.sh. The app half of these
+      # is frozen into the app image at build time, so a mismatch is not fixable at runtime.
+      APP_DOMAIN: ${APP_DOMAIN:?APP_DOMAIN is required}
+      SUB_DOMAIN: ${SUB_DOMAIN:?SUB_DOMAIN is required}
+      PUBLIC_APP_URL: ${PUBLIC_APP_URL:?PUBLIC_APP_URL is required}
+      MARZBAN_SUB_URL_PREFIX: ${MARZBAN_SUB_URL_PREFIX:?MARZBAN_SUB_URL_PREFIX is required}
+      # The account the app authenticates with. Non-sudo, per CLAUDE.md 2.
+      MARZBAN_ADMIN_USERNAME: ${MARZBAN_ADMIN_USERNAME:?MARZBAN_ADMIN_USERNAME is required}
+      MARZBAN_ADMIN_PASSWORD: ${MARZBAN_ADMIN_PASSWORD:?MARZBAN_ADMIN_PASSWORD is required}
+      # The operator's dashboard account, reachable only through an SSH tunnel. Optional.
+      MARZBAN_SUDO_USERNAME: ${MARZBAN_SUDO_USERNAME:-}
+      MARZBAN_SUDO_PASSWORD: ${MARZBAN_SUDO_PASSWORD:-}
+      # Compared against the tags in the rendered config: a mismatch here is a 422 on every
+      # POST /api/user, discovered after the customer has paid.
+      MARZBAN_INBOUND_TAGS: ${MARZBAN_INBOUND_TAGS:?MARZBAN_INBOUND_TAGS is required}
+      REALITY_PORT: ${REALITY_PORT:-8443}
+      REALITY_DEST: ${REALITY_DEST:-gateway.icloud.com:443}
+      REALITY_SERVER_NAMES: ${REALITY_SERVER_NAMES:-gateway.icloud.com}
+      # Set these to pin keys you generated yourself. Left empty, init.sh generates them once and
+      # keeps them on the volume forever — regenerating would cut off every client already issued.
+      REALITY_PRIVATE_KEY: ${REALITY_PRIVATE_KEY:-}
+      REALITY_SHORT_ID: ${REALITY_SHORT_ID:-}
     volumes:
       - marzban-data:/var/lib/marzban
+      - ./marzban/init.sh:/etc/marzban/init.sh:ro
+      - ./marzban/xray_config.template.json:/etc/marzban/xray_config.template.json:ro
+    command: ['bash', '/etc/marzban/init.sh']
     healthcheck:
-      # A TCP connect, not an HTTP route: /docs is disabled by default and /api/* needs a token,
-      # so anything richer would report a healthy panel as unhealthy.
+      disable: true
+
+  marzban:
+    # Pinned, never `latest` (tech.md 2). v0.8.4 is the newest STABLE upstream release.
+    # Re-checked 2026-07-21: still the latest GitHub release (2025-01-09), and `latest` currently
+    # resolves to this exact digest. v1.0.0 has been in beta since 2025-08 and is a rewrite whose
+    # API shapes are NOT the ones this stack is written against — do not bump without re-reading
+    # clients/marzban/http.ts. ~18 months without a stable release is exactly the upstream-liveness
+    # signal tech.md 17.6 asks the lead to weigh before launch; MarzbanApi keeps the swap cheap.
+    image: gozargah/marzban:v0.8.4
+    restart: unless-stopped
+    environment: *marzban-env
+    # The image's CMD (`alembic upgrade head; python main.py`) is replaced for two reasons.
+    #
+    # First and load-bearing: main.py hardcodes `host = '127.0.0.1'` whenever no TLS certificate is
+    # configured, and IGNORES UVICORN_HOST on that path. Under the stock command nothing outside
+    # this container can reach :8000 — not the app, not caddy's /sub/* route. Running uvicorn
+    # directly is what makes `http://marzban:8000` real. main.py is import-safe (its uvicorn.run is
+    # behind `if __name__ == "__main__"`), so every route, startup hook and the dashboard still
+    # register exactly as before.
+    #
+    # Second: that CMD joins the migration to the server with `;`, so a failed migration is
+    # swallowed and the panel boots against a stale schema. marzban-init owns migrations now, and it
+    # is gated on `service_completed_successfully` — which is also what keeps two processes off one
+    # SQLite file.
+    command: ['uvicorn', 'main:app', '--host', '0.0.0.0', '--port', '8000']
+    depends_on:
+      marzban-init:
+        condition: service_completed_successfully
+    ports:
+      # VLESS REALITY traffic only, and it must match the port marzban-init renders into the Xray
+      # config: Marzban copies that number straight into every subscription link and knows nothing
+      # about docker's port mapping.
+      #
+      # tech.md 3 gives Marzban both 443 and 8443 while also putting Caddy on 443, and one host
+      # cannot bind 443 twice. 8443 is the resolution (tech.md v7): it keeps public HTTPS for the
+      # mini app and the subscription link, at the cost of a non-443 client endpoint. Moving REALITY
+      # to 443 needs a second host IP — `<second-ip>:443:8443` — not a config change.
+      - '${REALITY_PORT:-8443}:${REALITY_PORT:-8443}'
+      # The panel, bound to the HOST LOOPBACK only. `127.0.0.1:` is the whole security control and
+      # is not optional: drop it and docker installs a DNAT rule from 0.0.0.0:8000 that publishes
+      # the dashboard, /api and the admin token endpoint to the internet in plaintext, bypassing
+      # caddy and the /sub/*-only design entirely (tech.md 3).
+      #
+      # Bound rather than merely `expose`d so the documented SSH tunnel actually terminates
+      # somewhere: `ssh -L 8000:127.0.0.1:8000 user@vps` and the dashboard is on localhost:8000.
+      - '127.0.0.1:8000:8000'
+    volumes:
+      - marzban-data:/var/lib/marzban
+    logging: *logging
+    healthcheck:
+      # Connects to the container's OWN hostname rather than to 127.0.0.1, and that is the entire
+      # point: a loopback probe passes even when uvicorn is bound to loopback only, which is the
+      # exact failure this stack had to work around. This one fails unless :8000 is reachable the
+      # way a sibling container reaches it.
       test:
         [
           'CMD',
           'python3',
           '-c',
-          "import socket; socket.create_connection(('127.0.0.1', 8000), 3).close()"
+          'import os, socket; socket.create_connection((os.uname().nodename, 8000), 3).close()'
         ]
       interval: 30s
       timeout: 5s
       start_period: 30s
       retries: 3
+
+  # Proves the app can actually use the panel: same credentials, same inbound tags, over HTTP.
+  # Nothing depends on it — the app must outlive a dead panel — so its failure surfaces as a
+  # non-zero one-shot in `docker compose ps` rather than as a stalled deploy.
+  marzban-check:
+    image: gozargah/marzban:v0.8.4
+    restart: 'no'
+    environment:
+      MARZBAN_API_URL: ${MARZBAN_API_URL:-http://marzban:8000}
+      MARZBAN_ADMIN_USERNAME: ${MARZBAN_ADMIN_USERNAME:?MARZBAN_ADMIN_USERNAME is required}
+      MARZBAN_ADMIN_PASSWORD: ${MARZBAN_ADMIN_PASSWORD:?MARZBAN_ADMIN_PASSWORD is required}
+      MARZBAN_INBOUND_TAGS: ${MARZBAN_INBOUND_TAGS:?MARZBAN_INBOUND_TAGS is required}
+    volumes:
+      - ./marzban/check.sh:/etc/marzban/check.sh:ro
+    command: ['bash', '/etc/marzban/check.sh']
+    depends_on:
+      marzban:
+        condition: service_healthy
+    healthcheck:
+      disable: true
 
 volumes:
   app-data:

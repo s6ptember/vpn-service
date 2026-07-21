@@ -16,6 +16,7 @@
 		"db:check": "drizzle-kit check",
 		"db:migrate": "tsx scripts/migrate.ts",
 		"db:seed": "tsx scripts/seed.ts",
+		"tg:set-webhook": "tsx scripts/set-webhook.ts",
 		"test:unit": "vitest",
 		"test": "npm run test:unit -- --run && npm run test:e2e",
 		"test:e2e": "playwright test"
