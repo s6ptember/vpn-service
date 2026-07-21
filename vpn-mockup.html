@@ -1,0 +1,949 @@
+<!doctype html>
+<html lang="ru">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+		<title>VPN — макет</title>
+
+		<link rel="preconnect" href="https://fonts.googleapis.com" />
+		<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+		<link
+			href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&display=swap"
+			rel="stylesheet"
+		/>
+
+		<script src="https://cdn.tailwindcss.com"></script>
+		<script>
+			tailwind.config = {
+				theme: {
+					extend: {
+						colors: {
+							bg: '#1A1A1A',
+							surface: '#242424',
+							surface2: '#2C2C2C',
+							accent: '#B6CAEB'
+						},
+						fontFamily: { sans: ['"Space Grotesk"', 'system-ui', 'sans-serif'] }
+					}
+				}
+			};
+		</script>
+
+		<!-- Reusable component classes -->
+		<style type="text/tailwindcss">
+			.screen-title {
+				@apply pb-1 text-center text-2xl font-bold tracking-tight text-white;
+			}
+			.section-h {
+				@apply mt-7 mb-3.5 flex items-center gap-3.5;
+			}
+			.section-h h2 {
+				@apply text-[19px] font-bold tracking-tight whitespace-nowrap text-white;
+			}
+			.section-h .rule {
+				@apply h-px flex-1 bg-white/10;
+			}
+
+			.card {
+				@apply rounded-[26px] border border-white/[0.08] bg-surface p-5;
+			}
+
+			.btn-primary {
+				@apply flex w-full items-center justify-center gap-2 rounded-2xl bg-accent py-3.5 text-[15px] font-bold text-[#141414] transition hover:brightness-105 active:scale-[.985];
+			}
+			.btn-secondary {
+				@apply flex w-full items-center justify-center gap-1.5 rounded-[14px] border border-white/[0.08] bg-white/[0.06] py-3 text-sm font-medium text-white transition hover:bg-white/10;
+			}
+
+			.chip {
+				@apply inline-flex items-center gap-2 rounded-full border border-white/10 px-3.5 py-2.5 text-[13px] font-medium text-white;
+			}
+			.chip svg {
+				@apply text-accent;
+			}
+
+			.badge {
+				@apply inline-flex items-center gap-1.5 rounded-full bg-accent/15 px-2.5 py-1 text-xs font-semibold text-accent;
+			}
+
+			.icon-btn {
+				@apply flex h-10 w-10 items-center justify-center rounded-full border border-white/[0.08] bg-surface text-white transition hover:bg-white/[0.06];
+			}
+			.icon-btn svg {
+				@apply text-accent;
+			}
+		</style>
+
+		<!-- App shell + pager + tab bar + accordion -->
+		<style>
+			:root {
+				--bg: #1a1a1a;
+				--accent: #b6caeb;
+			}
+			* {
+				box-sizing: border-box;
+			}
+			html,
+			body {
+				margin: 0;
+			}
+			body {
+				font-family: 'Space Grotesk', system-ui, sans-serif;
+				-webkit-font-smoothing: antialiased;
+				background: var(--bg);
+				color: #fff;
+				overflow-x: hidden;
+			}
+
+			/* single mobile app shell — no device frame */
+			.app {
+				position: relative;
+				max-width: 460px;
+				margin: 0 auto;
+				height: 100vh;
+				height: 100dvh;
+				display: flex;
+				flex-direction: column;
+				overflow: hidden;
+				background: var(--bg);
+			}
+
+			/* horizontal swipeable pager */
+			.pager {
+				flex: 1 1 auto;
+				display: flex;
+				overflow-x: auto;
+				overflow-y: hidden;
+				scroll-snap-type: x mandatory;
+				overscroll-behavior: contain;
+				scrollbar-width: none;
+				-webkit-overflow-scrolling: touch;
+			}
+			.pager::-webkit-scrollbar {
+				display: none;
+			}
+
+			.panel {
+				flex: 0 0 100%;
+				width: 100%;
+				height: 100%;
+				overflow-y: auto;
+				overflow-x: hidden;
+				overscroll-behavior: contain;
+				scroll-snap-align: start;
+				scrollbar-width: none;
+				padding: calc(env(safe-area-inset-top, 0px) + 26px) 20px 128px;
+			}
+			.panel::-webkit-scrollbar {
+				display: none;
+			}
+
+			/* floating tab bar */
+			.tabbar {
+				position: absolute;
+				left: 50%;
+				bottom: calc(env(safe-area-inset-bottom, 0px) + 18px);
+				transform: translateX(-50%);
+				z-index: 40;
+				display: flex;
+				align-items: center;
+				gap: 6px;
+				padding: 9px 12px;
+				border-radius: 999px;
+				background: rgba(36, 36, 36, 0.92);
+				-webkit-backdrop-filter: blur(14px);
+				backdrop-filter: blur(14px);
+				border: 1px solid rgba(255, 255, 255, 0.09);
+				box-shadow: 0 22px 44px -20px rgba(0, 0, 0, 0.85);
+			}
+			.tab {
+				width: 52px;
+				height: 44px;
+				display: flex;
+				align-items: center;
+				justify-content: center;
+				border: 0;
+				cursor: pointer;
+				border-radius: 999px;
+				color: rgba(255, 255, 255, 0.42);
+				background: transparent;
+				transition:
+					color 0.2s,
+					background 0.2s;
+			}
+			.tab.active {
+				color: var(--accent);
+				background: rgba(182, 202, 235, 0.12);
+			}
+
+			.avatar-sm {
+				width: 46px;
+				height: 46px;
+				border-radius: 999px;
+				display: flex;
+				align-items: center;
+				justify-content: center;
+				font-weight: 700;
+				font-size: 18px;
+				color: #fff;
+				background: var(--surface2, #2c2c2c);
+				border: 2px solid var(--accent);
+				box-shadow: 0 0 0 4px rgba(182, 202, 235, 0.08);
+				flex: 0 0 auto;
+			}
+			.avatar-lg {
+				width: 112px;
+				height: 112px;
+				border-radius: 999px;
+				display: flex;
+				align-items: center;
+				justify-content: center;
+				font-weight: 700;
+				font-size: 40px;
+				color: #fff;
+				background: #2c2c2c;
+				border: 3px solid var(--accent);
+				box-shadow:
+					0 0 0 6px rgba(182, 202, 235, 0.08),
+					0 0 44px -6px rgba(182, 202, 235, 0.3);
+			}
+
+			/* accordion */
+			.faq {
+				border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+			}
+			.faq:last-child {
+				border-bottom: 0;
+			}
+			.faq-q {
+				width: 100%;
+				display: flex;
+				align-items: center;
+				justify-content: space-between;
+				gap: 14px;
+				text-align: left;
+				background: transparent;
+				border: 0;
+				cursor: pointer;
+				color: #fff;
+				font-weight: 500;
+				font-size: 14.5px;
+				padding: 15px 0;
+			}
+			.faq-chevron {
+				flex: 0 0 auto;
+				color: rgba(255, 255, 255, 0.45);
+				transition:
+					transform 0.25s ease,
+					color 0.25s ease;
+			}
+			.faq.open .faq-chevron {
+				transform: rotate(180deg);
+				color: var(--accent);
+			}
+			.faq-a {
+				max-height: 0;
+				overflow: hidden;
+				transition: max-height 0.28s ease;
+			}
+			.faq.open .faq-a {
+				max-height: 240px;
+			}
+			.faq-a p {
+				color: rgba(255, 255, 255, 0.6);
+				font-size: 13px;
+				line-height: 1.55;
+				padding: 0 0 16px;
+			}
+
+			.muted {
+				color: rgba(255, 255, 255, 0.6);
+			}
+			button:focus-visible {
+				outline: 2px solid var(--accent);
+				outline-offset: 2px;
+			}
+			@media (prefers-reduced-motion: reduce) {
+				* {
+					transition: none !important;
+				}
+			}
+		</style>
+		<style>
+			/* bottom sheet */
+			.sheet-overlay {
+				position: absolute;
+				inset: 0;
+				z-index: 60;
+				display: flex;
+				align-items: flex-end;
+			}
+			.sheet-overlay[hidden] {
+				display: none;
+			}
+			.sheet-scrim {
+				position: absolute;
+				inset: 0;
+				background: rgba(0, 0, 0, 0.55);
+				opacity: 0;
+				transition: opacity 0.28s ease;
+			}
+			.sheet-overlay.open .sheet-scrim {
+				opacity: 1;
+			}
+			.sheet {
+				position: relative;
+				width: 100%;
+				background: #1f1f1f;
+				border-radius: 26px 26px 0 0;
+				border-top: 1px solid rgba(255, 255, 255, 0.08);
+				padding: 12px 20px calc(env(safe-area-inset-bottom, 0px) + 22px);
+				max-height: 90%;
+				overflow-y: auto;
+				scrollbar-width: none;
+				transform: translateY(100%);
+				transition: transform 0.34s cubic-bezier(0.22, 0.61, 0.36, 1);
+				box-shadow: 0 -24px 60px -24px rgba(0, 0, 0, 0.75);
+			}
+			.sheet::-webkit-scrollbar {
+				display: none;
+			}
+			.sheet-overlay.open .sheet {
+				transform: translateY(0);
+			}
+			.sheet-handle {
+				width: 40px;
+				height: 4px;
+				border-radius: 999px;
+				background: rgba(255, 255, 255, 0.2);
+				margin: 2px auto 12px;
+			}
+			.sheet-close {
+				width: 34px;
+				height: 34px;
+				display: flex;
+				align-items: center;
+				justify-content: center;
+				border: 0;
+				cursor: pointer;
+				border-radius: 999px;
+				color: #fff;
+				background: rgba(255, 255, 255, 0.06);
+				transition: background 0.18s;
+			}
+			.sheet-close:hover {
+				background: rgba(255, 255, 255, 0.1);
+			}
+
+			.plan {
+				width: 100%;
+				display: flex;
+				align-items: center;
+				gap: 14px;
+				text-align: left;
+				cursor: pointer;
+				background: #262626;
+				border: 1.5px solid rgba(255, 255, 255, 0.1);
+				border-radius: 20px;
+				padding: 15px 16px;
+				transition:
+					border-color 0.18s,
+					background 0.18s,
+					transform 0.1s;
+			}
+			.plan:hover {
+				background: #2b2b2b;
+			}
+			.plan:active {
+				transform: scale(0.99);
+			}
+			.plan.selected {
+				border-color: var(--accent);
+				background: rgba(182, 202, 235, 0.08);
+			}
+			.radio {
+				width: 20px;
+				height: 20px;
+				border-radius: 999px;
+				border: 2px solid rgba(255, 255, 255, 0.28);
+				flex: 0 0 auto;
+				position: relative;
+				transition: border-color 0.18s;
+			}
+			.plan.selected .radio {
+				border-color: var(--accent);
+			}
+			.plan.selected .radio::after {
+				content: '';
+				position: absolute;
+				inset: 3px;
+				border-radius: 999px;
+				background: var(--accent);
+			}
+			.plan-tag {
+				display: inline-block;
+				margin-top: 4px;
+				font-size: 11px;
+				font-weight: 600;
+				color: var(--accent);
+				background: rgba(182, 202, 235, 0.14);
+				padding: 2px 8px;
+				border-radius: 999px;
+			}
+		</style>
+	</head>
+
+	<body>
+		<div class="app">
+			<div class="pager" id="pager">
+				<!-- =========== СЕКЦИЯ 1 · ПОДДЕРЖКА =========== -->
+				<section class="panel" aria-label="Поддержка">
+					<div class="screen-title">Поддержка</div>
+
+					<div class="section-h">
+						<h2>Частые вопросы</h2>
+						<span class="rule"></span>
+					</div>
+					<div class="card" style="padding-top: 2px; padding-bottom: 2px">
+						<div class="faq open">
+							<button class="faq-q" onclick="toggleFaq(this)">
+								<span>Как подключиться к VPN?</span>
+								<svg
+									class="faq-chevron h-5 w-5"
+									viewBox="0 0 24 24"
+									fill="none"
+									stroke="currentColor"
+									stroke-width="2"
+									stroke-linecap="round"
+									stroke-linejoin="round"
+								>
+									<path d="m6 9 6 6 6-6" />
+								</svg>
+							</button>
+							<div class="faq-a">
+								<p>
+									Откройте приложение, выберите сервер и нажмите «Подключиться». Соединение
+									установится за пару секунд.
+								</p>
+							</div>
+						</div>
+						<div class="faq">
+							<button class="faq-q" onclick="toggleFaq(this)">
+								<span>На скольких устройствах работает подписка?</span>
+								<svg
+									class="faq-chevron h-5 w-5"
+									viewBox="0 0 24 24"
+									fill="none"
+									stroke="currentColor"
+									stroke-width="2"
+									stroke-linecap="round"
+									stroke-linejoin="round"
+								>
+									<path d="m6 9 6 6 6-6" />
+								</svg>
+							</button>
+							<div class="faq-a">
+								<p>
+									Одна подписка работает одновременно на пяти устройствах — телефон, планшет и
+									компьютер сразу.
+								</p>
+							</div>
+						</div>
+						<div class="faq">
+							<button class="faq-q" onclick="toggleFaq(this)">
+								<span>Какие есть способы оплаты?</span>
+								<svg
+									class="faq-chevron h-5 w-5"
+									viewBox="0 0 24 24"
+									fill="none"
+									stroke="currentColor"
+									stroke-width="2"
+									stroke-linecap="round"
+									stroke-linejoin="round"
+								>
+									<path d="m6 9 6 6 6-6" />
+								</svg>
+							</button>
+							<div class="faq-a">
+								<p>Карты Visa и Mastercard, а также оплата через Telegram Stars прямо в боте.</p>
+							</div>
+						</div>
+						<div class="faq">
+							<button class="faq-q" onclick="toggleFaq(this)">
+								<span>Как сменить страну сервера?</span>
+								<svg
+									class="faq-chevron h-5 w-5"
+									viewBox="0 0 24 24"
+									fill="none"
+									stroke="currentColor"
+									stroke-width="2"
+									stroke-linecap="round"
+									stroke-linejoin="round"
+								>
+									<path d="m6 9 6 6 6-6" />
+								</svg>
+							</button>
+							<div class="faq-a">
+								<p>
+									На главном экране нажмите «Сменить сервер» и выберите нужную страну из списка.
+								</p>
+							</div>
+						</div>
+						<div class="faq">
+							<button class="faq-q" onclick="toggleFaq(this)">
+								<span>VPN не подключается — что делать?</span>
+								<svg
+									class="faq-chevron h-5 w-5"
+									viewBox="0 0 24 24"
+									fill="none"
+									stroke="currentColor"
+									stroke-width="2"
+									stroke-linecap="round"
+									stroke-linejoin="round"
+								>
+									<path d="m6 9 6 6 6-6" />
+								</svg>
+							</button>
+							<div class="faq-a">
+								<p>
+									Проверьте интернет, смените сервер или протокол. Если не помогло — напишите нам в
+									Telegram.
+								</p>
+							</div>
+						</div>
+						<div class="faq">
+							<button class="faq-q" onclick="toggleFaq(this)">
+								<span>Как отменить подписку?</span>
+								<svg
+									class="faq-chevron h-5 w-5"
+									viewBox="0 0 24 24"
+									fill="none"
+									stroke="currentColor"
+									stroke-width="2"
+									stroke-linecap="round"
+									stroke-linejoin="round"
+								>
+									<path d="m6 9 6 6 6-6" />
+								</svg>
+							</button>
+							<div class="faq-a">
+								<p>
+									Управление подпиской — в профиле. Отмена вступает в силу в конце оплаченного
+									периода.
+								</p>
+							</div>
+						</div>
+					</div>
+
+					<div class="section-h">
+						<h2>Написать нам</h2>
+						<span class="rule"></span>
+					</div>
+					<div class="card">
+						<h3 class="text-[16px] font-bold">Форма доступна в Telegram</h3>
+						<p class="muted mt-2 mb-4 text-[13.5px] leading-relaxed">
+							Чтобы переписка не терялась, поддержка работает через нашего бота. Там мы отвечаем
+							быстрее всего.
+						</p>
+						<button class="btn-primary">
+							<svg
+								viewBox="0 0 24 24"
+								fill="none"
+								stroke="currentColor"
+								stroke-width="2"
+								stroke-linecap="round"
+								stroke-linejoin="round"
+								class="h-[18px] w-[18px]"
+							>
+								<path d="M22 2 11 13" />
+								<path d="M22 2 15 22l-4-9-9-4 20-7z" />
+							</svg>
+							Открыть в Telegram
+						</button>
+					</div>
+				</section>
+
+				<!-- =========== СЕКЦИЯ 2 · ГЛАВНАЯ =========== -->
+				<section class="panel" aria-label="Главная">
+					<div class="flex items-center gap-3">
+						<div class="avatar-sm">J</div>
+						<div class="min-w-0 flex-1">
+							<div class="muted text-[13px] leading-tight">Добро пожаловать,</div>
+							<div class="text-[19px] leading-tight font-bold tracking-tight">Jane</div>
+						</div>
+						<button class="icon-btn" aria-label="Уведомления">
+							<svg
+								viewBox="0 0 24 24"
+								fill="none"
+								stroke="currentColor"
+								stroke-width="1.9"
+								stroke-linecap="round"
+								stroke-linejoin="round"
+								class="h-[19px] w-[19px]"
+							>
+								<path d="M6 9a6 6 0 0 1 12 0c0 4 1.5 5 2 5.5H4c.5-.5 2-1.5 2-5.5z" />
+								<path d="M10 19a2 2 0 0 0 4 0" />
+							</svg>
+						</button>
+					</div>
+
+					<div class="mt-4 flex flex-wrap gap-2">
+						<span class="chip"
+							><svg
+								viewBox="0 0 24 24"
+								fill="none"
+								stroke="currentColor"
+								stroke-width="1.8"
+								stroke-linecap="round"
+								stroke-linejoin="round"
+								class="h-[17px] w-[17px]"
+							>
+								<path
+									d="M10.73 5.08A10.4 10.4 0 0 1 12 5c7 0 10 7 10 7a13.2 13.2 0 0 1-1.67 2.68"
+								/>
+								<path d="M6.61 6.61A13.5 13.5 0 0 0 2 12s3 7 10 7a9.7 9.7 0 0 0 5.39-1.61" />
+								<line x1="2" y1="2" x2="22" y2="22" /></svg
+							>Без логов</span
+						>
+						<span class="chip"
+							><svg
+								viewBox="0 0 24 24"
+								fill="none"
+								stroke="currentColor"
+								stroke-width="1.7"
+								stroke-linecap="round"
+								stroke-linejoin="round"
+								class="h-[17px] w-[17px]"
+							>
+								<rect x="4" y="4" width="16" height="16" rx="2" />
+								<rect x="9" y="9" width="6" height="6" />
+								<path d="M9 1v3M15 1v3M9 20v3M15 20v3M20 9h3M20 14h3M1 9h3M1 14h3" /></svg
+							>XRAY</span
+						>
+						<span class="chip"
+							><svg
+								viewBox="0 0 24 24"
+								fill="none"
+								stroke="currentColor"
+								stroke-width="1.8"
+								stroke-linecap="round"
+								stroke-linejoin="round"
+								class="h-[17px] w-[17px]"
+							>
+								<rect x="4" y="10.5" width="16" height="10.5" rx="2.5" />
+								<path d="M8 10.5V7a4 4 0 0 1 8 0v3.5" /></svg
+							>VLESS</span
+						>
+					</div>
+
+					<div class="section-h">
+						<h2>Текущий план</h2>
+						<span class="rule"></span>
+					</div>
+					<div class="card">
+						<div class="flex items-start justify-between gap-3">
+							<div>
+								<div class="text-[20px] font-bold tracking-tight">Premium</div>
+								<div class="muted mt-1 text-[13px]">Активен ещё 24 дня</div>
+							</div>
+							<span class="badge"
+								><span class="h-1.5 w-1.5 rounded-full bg-accent"></span>Активен</span
+							>
+						</div>
+						<button class="btn-primary mt-5">
+							<svg
+								viewBox="0 0 24 24"
+								fill="none"
+								stroke="currentColor"
+								stroke-width="2"
+								stroke-linecap="round"
+								stroke-linejoin="round"
+								class="h-[18px] w-[18px]"
+							>
+								<path d="M12 7v14" />
+								<path d="M3 5a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v14a2 2 0 0 0-2-2H5a2 2 0 0 1-2-2z" />
+								<path d="M21 5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v14a2 2 0 0 1 2-2h4a2 2 0 0 0 2-2z" />
+							</svg>
+							Инструкция по подключению
+						</button>
+						<div class="mt-2.5 grid grid-cols-2 gap-2.5">
+							<button class="btn-secondary">Промокод</button>
+							<button class="btn-secondary" onclick="openSheet()">Продлить</button>
+						</div>
+					</div>
+				</section>
+
+				<!-- =========== СЕКЦИЯ 3 · ПРОФИЛЬ =========== -->
+				<section class="panel" aria-label="Профиль">
+					<div class="flex items-center justify-between">
+						<button class="icon-btn" aria-label="Настройки">
+							<svg
+								viewBox="0 0 24 24"
+								fill="none"
+								stroke="currentColor"
+								stroke-width="1.9"
+								stroke-linecap="round"
+								stroke-linejoin="round"
+								class="h-[19px] w-[19px]"
+							>
+								<path d="M20 7h-8" />
+								<path d="M6 7H4" />
+								<path d="M12 17H4" />
+								<path d="M20 17h-2" />
+								<circle cx="9" cy="7" r="2.4" />
+								<circle cx="15" cy="17" r="2.4" />
+							</svg>
+						</button>
+						<div class="text-[22px] font-bold tracking-tight">Профиль</div>
+						<button class="icon-btn" aria-label="Уведомления">
+							<svg
+								viewBox="0 0 24 24"
+								fill="none"
+								stroke="currentColor"
+								stroke-width="1.9"
+								stroke-linecap="round"
+								stroke-linejoin="round"
+								class="h-[19px] w-[19px]"
+							>
+								<path d="M6 9a6 6 0 0 1 12 0c0 4 1.5 5 2 5.5H4c.5-.5 2-1.5 2-5.5z" />
+								<path d="M10 19a2 2 0 0 0 4 0" />
+							</svg>
+						</button>
+					</div>
+
+					<div class="mt-6 flex flex-col items-center">
+						<div class="avatar-lg">JS</div>
+						<div class="mt-3.5 text-[22px] font-bold tracking-tight">Jane Sodi</div>
+						<div class="muted mt-0.5 text-[13px]">@jane_sodi</div>
+					</div>
+
+					<div class="section-h">
+						<h2>Подписка</h2>
+						<span class="rule"></span>
+					</div>
+					<div class="card">
+						<div class="text-[18px] font-bold">Premium активна</div>
+						<p class="muted mt-2 mb-5 text-[13.5px] leading-relaxed">
+							Действует до 12 июля 2026 года. Автопродление включено — доступ не прервётся.
+						</p>
+						<button class="btn-primary">
+							<svg
+								viewBox="0 0 24 24"
+								fill="none"
+								stroke="currentColor"
+								stroke-width="2"
+								stroke-linecap="round"
+								stroke-linejoin="round"
+								class="h-[18px] w-[18px]"
+							>
+								<path d="M12 7v14" />
+								<path d="M3 5a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v14a2 2 0 0 0-2-2H5a2 2 0 0 1-2-2z" />
+								<path d="M21 5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v14a2 2 0 0 1 2-2h4a2 2 0 0 0 2-2z" />
+							</svg>
+							Инструкция по подключению
+						</button>
+					</div>
+				</section>
+			</div>
+
+			<!-- таб-бар (переключает секции) -->
+			<nav class="tabbar" aria-label="Навигация" role="tablist">
+				<button class="tab" data-index="0" aria-label="Поддержка" role="tab">
+					<svg
+						viewBox="0 0 24 24"
+						fill="none"
+						stroke="currentColor"
+						stroke-width="1.8"
+						stroke-linecap="round"
+						stroke-linejoin="round"
+						class="h-6 w-6"
+					>
+						<path d="M4 14v-3a8 8 0 0 1 16 0v3" />
+						<path d="M4 14a2 2 0 0 1 2-2h1v6H6a2 2 0 0 1-2-2v-2z" />
+						<path d="M20 14a2 2 0 0 0-2-2h-1v6h1a2 2 0 0 0 2-2v-2z" />
+						<path d="M20 15v1a4 4 0 0 1-4 4h-2" />
+					</svg>
+				</button>
+				<button class="tab" data-index="1" aria-label="Главная" role="tab">
+					<svg
+						viewBox="0 0 24 24"
+						fill="none"
+						stroke="currentColor"
+						stroke-width="1.8"
+						stroke-linecap="round"
+						stroke-linejoin="round"
+						class="h-6 w-6"
+					>
+						<path d="M3 10.5 12 3l9 7.5" />
+						<path d="M5 9.5V20a1 1 0 0 0 1 1h4v-6h4v6h4a1 1 0 0 0 1-1V9.5" />
+					</svg>
+				</button>
+				<button class="tab" data-index="2" aria-label="Профиль" role="tab">
+					<svg
+						viewBox="0 0 24 24"
+						fill="none"
+						stroke="currentColor"
+						stroke-width="1.8"
+						stroke-linecap="round"
+						stroke-linejoin="round"
+						class="h-6 w-6"
+					>
+						<circle cx="12" cy="8" r="3.5" />
+						<path d="M5 20c0-3.5 3-6 7-6s7 2.5 7 6" />
+					</svg>
+				</button>
+			</nav>
+
+			<!-- выезжающее окно: тарифы (открывается по «Продлить») -->
+			<div class="sheet-overlay" id="planSheet" hidden>
+				<div class="sheet-scrim" onclick="closeSheet()"></div>
+				<div class="sheet" role="dialog" aria-modal="true" aria-label="Продлить подписку">
+					<div class="sheet-handle"></div>
+					<div class="mb-1.5 flex items-center justify-between">
+						<h3 class="text-[20px] font-bold tracking-tight">Продлить подписку</h3>
+						<button class="sheet-close" onclick="closeSheet()" aria-label="Закрыть">
+							<svg
+								viewBox="0 0 24 24"
+								fill="none"
+								stroke="currentColor"
+								stroke-width="2"
+								stroke-linecap="round"
+								stroke-linejoin="round"
+								class="h-[18px] w-[18px]"
+							>
+								<path d="M18 6 6 18M6 6l12 12" />
+							</svg>
+						</button>
+					</div>
+					<p class="muted mb-4 text-[13.5px] leading-relaxed">
+						Выберите срок — оплата пройдёт в Telegram‑боте.
+					</p>
+
+					<div class="flex flex-col gap-2.5">
+						<button class="plan" data-days="7" onclick="selectPlan(this)">
+							<span class="radio"></span>
+							<span class="flex-1">
+								<span class="block text-[17px] font-bold">7 дней</span>
+								<span class="muted mt-0.5 block text-[12.5px]">Попробовать</span>
+							</span>
+							<span class="text-right"><span class="block text-[18px] font-bold">$2</span></span>
+						</button>
+
+						<button class="plan selected" data-days="30" onclick="selectPlan(this)">
+							<span class="radio"></span>
+							<span class="flex-1">
+								<span class="block text-[17px] font-bold">30 дней</span>
+								<span class="muted mt-0.5 block text-[12.5px]">Оптимальный выбор</span>
+							</span>
+							<span class="text-right">
+								<span class="block text-[18px] font-bold">$5</span>
+								<span class="plan-tag">−40%</span>
+							</span>
+						</button>
+
+						<button class="plan" data-days="90" onclick="selectPlan(this)">
+							<span class="radio"></span>
+							<span class="flex-1">
+								<span class="block text-[17px] font-bold">90 дней</span>
+								<span class="muted mt-0.5 block text-[12.5px]">Максимальная выгода</span>
+							</span>
+							<span class="text-right">
+								<span class="block text-[18px] font-bold">$12</span>
+								<span class="plan-tag">−55%</span>
+							</span>
+						</button>
+					</div>
+
+					<button class="btn-primary mt-5">
+						<svg
+							viewBox="0 0 24 24"
+							fill="none"
+							stroke="currentColor"
+							stroke-width="2"
+							stroke-linecap="round"
+							stroke-linejoin="round"
+							class="h-[18px] w-[18px]"
+						>
+							<path d="M22 2 11 13" />
+							<path d="M22 2 15 22l-4-9-9-4 20-7z" />
+						</svg>
+						Оплатить в Telegram
+					</button>
+				</div>
+			</div>
+		</div>
+
+		<script>
+			function toggleFaq(btn) {
+				btn.closest('.faq').classList.toggle('open');
+			}
+
+			const pager = document.getElementById('pager');
+			const panels = Array.from(pager.children);
+			const tabs = Array.from(document.querySelectorAll('.tab'));
+			const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+			let current = 1; // старт на «Главной»
+
+			function syncTabs(i) {
+				tabs.forEach((t, idx) => {
+					const on = idx === i;
+					t.classList.toggle('active', on);
+					t.setAttribute('aria-selected', on ? 'true' : 'false');
+				});
+			}
+			function goTo(i) {
+				current = i;
+				pager.scrollTo({ left: pager.clientWidth * i, behavior: reduce ? 'auto' : 'smooth' });
+			}
+
+			tabs.forEach((t) => t.addEventListener('click', () => goTo(Number(t.dataset.index))));
+
+			// подсветка активной вкладки при свайпе
+			const io = new IntersectionObserver(
+				(entries) => {
+					entries.forEach((e) => {
+						if (e.isIntersecting) {
+							current = panels.indexOf(e.target);
+							syncTabs(current);
+						}
+					});
+				},
+				{ root: pager, threshold: 0.6 }
+			);
+			panels.forEach((p) => io.observe(p));
+
+			function initPos() {
+				pager.scrollLeft = pager.clientWidth * current;
+				syncTabs(current);
+			}
+			window.addEventListener('load', initPos);
+			document.fonts && document.fonts.ready.then(initPos);
+			window.addEventListener('resize', () => {
+				pager.scrollLeft = pager.clientWidth * current;
+			});
+
+			// выезжающее окно с тарифами
+			const planSheet = document.getElementById('planSheet');
+			function openSheet() {
+				planSheet.hidden = false;
+				requestAnimationFrame(() => planSheet.classList.add('open'));
+			}
+			function closeSheet() {
+				planSheet.classList.remove('open');
+				setTimeout(
+					() => {
+						planSheet.hidden = true;
+					},
+					reduce ? 0 : 340
+				);
+			}
+			function selectPlan(el) {
+				document.querySelectorAll('.plan').forEach((p) => p.classList.remove('selected'));
+				el.classList.add('selected');
+			}
+			document.addEventListener('keydown', (e) => {
+				if (e.key === 'Escape' && !planSheet.hidden) closeSheet();
+			});
+		</script>
+	</body>
+</html>
