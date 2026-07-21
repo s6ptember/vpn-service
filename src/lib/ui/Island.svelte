@@ -21,7 +21,7 @@
 	class="pointer-events-none absolute inset-x-0 bottom-0 z-40 flex justify-center pb-[max(18px,calc(env(safe-area-inset-bottom)+18px))]"
 	aria-label="Разделы"
 >
-	<div class="pointer-events-auto flex gap-1.5 rounded-island px-3 py-[9px] island">
+	<div class="pointer-events-auto island flex gap-1.5 rounded-island px-3 py-[9px]">
 		<!--
 			The travelling pill is a tint, not a fill: the reference marks the active tab by lifting it
 			a few percent out of the rail and colouring the icon, so the accent stays a highlight rather
