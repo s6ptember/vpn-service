@@ -37,7 +37,7 @@ REALITY, миграции панели и оба админских аккаун
    `up`: Caddy идёт за сертификатом сразу, а Let's Encrypt лимитирует неудачные попытки. Пока
    записи не разъехались, раскомментируй `ACME_CA` со стейджингом в `.env`.
 2. **Порты на фаерволе.** `80`, `443` (tcp+udp) и `8443` (tcp, VLESS). `8000` наружу не открывать
-   никогда — панель живёт только внутри Docker-сети.
+   никогда: панель биндится на петлю хоста и доступна только по SSH-туннелю.
 3. **Бот.** Токен и username у BotFather, короткое имя мини-аппа для `RETURN_DEEPLINK`, свой
    численный Telegram id в `ADMIN_CHAT_ID`.
 4. **Stripe.** Вебхук на `https://app.<домен>/api/stripe/webhook`, `whsec_…` в
@@ -88,7 +88,7 @@ scripts/deploy.sh        # сборка + up + проверка одноразо
 ```bash
 scripts/deploy.sh                                                   # образ с новым паролем
 docker compose stop marzban
-docker compose run --rm marzban-init marzban-cli admin delete -u <username>
+docker compose run --rm marzban-init marzban-cli admin delete -u <username> -y
 docker compose up -d marzban-init && docker compose start marzban
 ```
 

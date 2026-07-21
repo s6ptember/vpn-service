@@ -4,14 +4,18 @@
 # the same image, and exits.
 #
 # It answers the one question the healthcheck cannot: can the APPLICATION actually use this panel?
-# The panel being up says nothing about whether the account the app was built with still exists with
-# the password the app was built with. That pair drifts in exactly one situation — MARZBAN_ADMIN_
-# PASSWORD is rotated in .env while the admin row keeps the old hash — and the symptom is a 401 on
-# `subscription.provision`, which happens after the customer has already paid.
+# The panel being up says nothing about whether the account exists, whether its password still
+# matches, or whether the inbound the app names is one the panel serves. Every one of those failures
+# surfaces as a 401 or a 422 on `subscription.provision` — i.e. after the customer has paid.
+#
+# It reads the CURRENT .env, while the app holds what was inlined into its image at build time.
+# Those agree because scripts/deploy.sh rebuilds whenever .env changes (the DOTENV_HASH build arg);
+# a deploy that skips the script can drift, and then this check is testing the wrong credentials.
 #
 # Nothing depends on this service: the app must survive a dead panel (jobs retry), so gating app
 # startup on the panel would trade a recoverable outage for an unrecoverable one. Failure shows up
-# as a non-zero one-shot in `docker compose ps`.
+# as a non-zero one-shot — which is why scripts/deploy.sh waits on it rather than leaving it to
+# `docker compose ps`, where an exited container is invisible without `-a`.
 
 set -euo pipefail
 
@@ -63,7 +67,7 @@ MARZBAN_INBOUND_TAGS="${MARZBAN_INBOUND_TAGS:-}" python3 <<-'PY'
 	                'right now:\n'
 	                '    1. docker compose build          (with the new .env; scripts/deploy.sh does this)\n'
 	                '    2. docker compose stop marzban\n'
-	                f'    3. docker compose run --rm marzban-init marzban-cli admin delete -u {USERNAME}\n'
+	                f'    3. docker compose run --rm marzban-init marzban-cli admin delete -u {USERNAME} -y\n'
 	                '    4. docker compose up -d marzban-init && docker compose start marzban\n'
 	                '  Deleting the admin before step 1 breaks a system that currently works.'
 	            )
@@ -94,8 +98,8 @@ MARZBAN_INBOUND_TAGS="${MARZBAN_INBOUND_TAGS:-}" python3 <<-'PY'
 	        fail(
 	            f'the app account "{USERNAME}" is a SUDO admin. CLAUDE.md 2 requires a non-sudo account: '
 	            'a superadmin token makes every app-side bug a panel-wide one. Recreate it — '
-	            f'`marzban-cli admin delete -u {USERNAME}`, then re-run marzban-init, which passes '
-	            '--no-sudo.'
+	            f'`docker compose run --rm marzban-init marzban-cli admin delete -u {USERNAME} -y`, '
+	            'then re-run marzban-init, which passes --no-sudo.'
 	        )
 	    print(f'marzban-check: "{USERNAME}" is non-sudo, as CLAUDE.md 2 requires')
 	except urllib.error.HTTPError as exc:
